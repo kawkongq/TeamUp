@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear Cookies - TeamUp</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin: 10px 0;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: scale(1.05);
+        }
+        .success {
+            background: #10b981;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            display: none;
+        }
+        .info {
+            background: #f3f4f6;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+        }
+        code {
+            background: #e5e7eb;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🍪 Clear TeamUp Cookies</h1>
+        
+        <div class="info">
+            <p><strong>Current cookies:</strong></p>
+            <div id="currentCookies" style="font-family: monospace; font-size: 12px;"></div>
+        </div>
+
+        <button onclick="clearAllCookies()">🗑️ Clear All Cookies</button>
+        <button onclick="clearLocalStorage()">🗑️ Clear LocalStorage</button>
+        <button onclick="clearEverything()">🔥 Clear Everything</button>
+        
+        <div id="success" class="success">
+            ✅ Cookies cleared! You can now test signup.
+        </div>
+
+        <div class="info" style="margin-top: 20px;">
+            <p><strong>After clearing:</strong></p>
+            <ol>
+                <li>Go to <code>http://localhost:3000/signup</code></li>
+                <li>Fill in the signup form</li>
+                <li>Check MongoDB Atlas for the new user</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        function displayCookies() {
+            const cookies = document.cookie;
+            document.getElementById('currentCookies').textContent = cookies || 'No cookies found';
+        }
+
+        function clearAllCookies() {
+            const cookies = document.cookie.split(";");
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i];
+                const eqPos = cookie.indexOf("=");
+                const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+                document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+            }
+            document.getElementById('success').style.display = 'block';
+            setTimeout(() => {
+                displayCookies();
+                document.getElementById('success').style.display = 'none';
+            }, 2000);
+        }
+
+        function clearLocalStorage() {
+            localStorage.clear();
+            document.getElementById('success').textContent = '✅ LocalStorage cleared!';
+            document.getElementById('success').style.display = 'block';
+            setTimeout(() => {
+                document.getElementById('success').style.display = 'none';
+            }, 2000);
+        }
+
+        function clearEverything() {
+            clearAllCookies();
+            localStorage.clear();
+            sessionStorage.clear();
+            document.getElementById('success').textContent = '✅ Everything cleared! Redirecting to signup...';
+            document.getElementById('success').style.display = 'block';
+            setTimeout(() => {
+                window.location.href = 'http://localhost:3000/signup';
+            }, 2000);
+        }
+
+        // Display cookies on load
+        displayCookies();
+    </script>
+</body>
+</html>
