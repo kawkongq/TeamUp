@@ -19,11 +19,19 @@ export type SigninInput = {
   password: string;
 };
 
+export type GoogleSigninInput = {
+  googleId: string;
+  email: string;
+  name?: string | null;
+  avatar?: string | null;
+};
+
 export type AuthUserPayload = {
   id: string;
   email: string;
   name: string;
   role: IUser['role'];
+  avatar: string | null;
   profile: SanitisedProfile | null;
 };
 
@@ -108,6 +116,7 @@ export async function signupUser(
       email: user.email,
       name: user.name,
       role: user.role,
+      avatar: user.avatar ?? null,
       profile: sanitiseProfile(profile),
     },
     sessionToken,
@@ -134,6 +143,10 @@ export async function signinUser(
     throw new Error('This account has been deleted and cannot be accessed');
   }
 
+  if (!user.passwordHash) {
+    throw new Error('This account uses Google sign-in. Please continue with Google.');
+  }
+
   const isValidPassword = await deps.comparePassword(password, user.passwordHash);
   if (!isValidPassword) {
     throw new Error('Invalid email or password');
@@ -148,6 +161,89 @@ export async function signinUser(
       email: user.email,
       name: user.name,
       role: user.role,
+      avatar: user.avatar ?? null,
+      profile: sanitiseProfile(profile),
+    },
+    sessionToken,
+  };
+}
+
+export async function signinWithGoogle(
+  input: GoogleSigninInput,
+  dependencies: AuthDependencies = {},
+): Promise<{ user: AuthUserPayload; sessionToken: string }> {
+  const deps = { ...defaultDeps, ...dependencies };
+  const googleId = input.googleId?.trim();
+  const email = input.email?.trim().toLowerCase();
+  const name = input.name?.trim() || '';
+  const avatar = input.avatar ?? null;
+
+  if (!googleId || !email) {
+    throw new Error('Google account details are incomplete');
+  }
+
+  let user =
+    (await deps.userModel.findOne({ googleId })) ||
+    (await deps.userModel.findOne({ email }));
+
+  if (!user) {
+    user = await deps.userModel.create({
+      email,
+      name: name || email,
+      googleId,
+      provider: 'google',
+      avatar,
+      role: 'user',
+    });
+  } else {
+    if (!user.googleId) {
+      user.googleId = googleId;
+    }
+
+    if (avatar && user.avatar !== avatar) {
+      user.avatar = avatar;
+    }
+
+    if (!user.name || user.name.startsWith('[DELETED]')) {
+      user.name = name || email;
+    }
+
+    if (user.provider === 'credentials' && user.passwordHash) {
+      user.provider = 'hybrid';
+    } else if (!user.passwordHash) {
+      user.provider = 'google';
+    }
+
+    await user.save();
+  }
+
+  let profile = await deps.profileModel.findOne({ userId: user.id });
+  if (!profile) {
+    profile = await deps.profileModel.create({
+      userId: user.id,
+      displayName: user.name,
+      bio: '',
+      role: user.role,
+      avatar: avatar ?? undefined,
+      timezone: 'UTC',
+      isAvailable: true,
+      skills: [],
+      interests: [],
+    });
+  } else if (!profile.displayName && user.name) {
+    profile.displayName = user.name;
+    await profile.save();
+  }
+
+  const sessionToken = deps.sessionFactory(user.id, user.role);
+
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      avatar: user.avatar ?? null,
       profile: sanitiseProfile(profile),
     },
     sessionToken,

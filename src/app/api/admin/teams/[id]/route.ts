@@ -7,6 +7,7 @@ import Profile from '@/models/Profile';
 import TeamMember from '@/models/TeamMember';
 import Event from '@/models/Event';
 import mongoose from 'mongoose';
+import { normalizeAvatarUrl } from '@/lib/avatar';
 
 export async function GET(
   request: NextRequest,
@@ -52,7 +53,7 @@ export async function GET(
             id: member.userId._id.toString(),
             name: member.userId.name || member.userId.email,
             email: member.userId.email,
-            avatar: profile?.avatar,
+            avatar: normalizeAvatarUrl(profile?.avatar) ?? null,
             role: profile?.role,
             location: profile?.location
           }
@@ -74,7 +75,7 @@ export async function GET(
         id: owner._id.toString(),
         name: owner.name || owner.email,
         email: owner.email,
-        avatar: ownerProfile?.avatar
+        avatar: normalizeAvatarUrl(ownerProfile?.avatar) ?? null
       } : null,
       event: event ? {
         id: event._id.toString(),

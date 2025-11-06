@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import Profile from '@/models/Profile';
+import { normalizeAvatarUrl } from '@/lib/avatar';
 
 export async function GET(_request: NextRequest) {
   try {
@@ -24,7 +25,7 @@ export async function GET(_request: NextRequest) {
           email: user.email,
           role: user.role || 'user',
           deletedAt: user.updatedAt.toISOString(),
-          avatar: profile?.avatar
+          avatar: normalizeAvatarUrl(profile?.avatar) ?? null
         };
       })
     );

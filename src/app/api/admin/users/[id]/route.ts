@@ -6,6 +6,7 @@ import Profile from '@/models/Profile';
 import Team from '@/models/Team';
 import TeamMember from '@/models/TeamMember';
 import mongoose from 'mongoose';
+import { normalizeAvatarUrl } from '@/lib/avatar';
 
 export async function GET(
   request: NextRequest,
@@ -48,7 +49,7 @@ export async function GET(
       email: user.email,
       role: user.role || 'user',
       status: 'active',
-      avatar: profile?.avatar,
+      avatar: normalizeAvatarUrl(profile?.avatar) ?? null,
       bio: profile?.bio || 'No bio available',
       location: profile?.location || 'Not specified',
       skills: profile?.skills || [],

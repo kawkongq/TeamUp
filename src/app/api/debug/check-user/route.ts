@@ -5,9 +5,14 @@ import connectDB from '@/lib/mongodb';
 import Profile, { IProfile } from '@/models/Profile';
 import User, { IUser } from '@/models/User';
 import { SESSION_COOKIE_NAME, verifySessionToken } from '@/lib/session';
+import { normalizeAvatarUrl } from '@/lib/avatar';
 
-type SanitisedProfile = Pick<IProfile, 'displayName' | 'role' | 'avatar' | 'timezone'> & {
+type SanitisedProfile = {
   id: string;
+  displayName: IProfile['displayName'];
+  role: IProfile['role'];
+  avatar: string | null;
+  timezone: IProfile['timezone'];
 };
 
 type SanitisedUser = {
@@ -28,7 +33,7 @@ function sanitiseProfile(profile: IProfile | null): SanitisedProfile | null {
     id: profile.id,
     displayName: profile.displayName,
     role: profile.role,
-    avatar: profile.avatar,
+    avatar: normalizeAvatarUrl(profile.avatar) ?? null,
     timezone: profile.timezone,
   };
 }

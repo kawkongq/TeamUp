@@ -3,10 +3,12 @@ import mongoose, { Schema, Document } from 'mongoose';
 export interface IUser extends Document {
   name: string;
   email: string;
-  passwordHash: string;
+  passwordHash?: string | null;
   role: 'user' | 'organizer' | 'admin';
   avatar?: string;
   isActive: boolean;
+  provider: 'credentials' | 'google' | 'hybrid';
+  googleId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -26,8 +28,11 @@ const UserSchema: Schema = new Schema({
   },
   passwordHash: {
     type: String,
-    required: true,
-    minlength: 6
+    minlength: 6,
+    default: null,
+    required: function (this: { provider: string }) {
+      return this.provider === 'credentials' || this.provider === 'hybrid';
+    }
   },
   role: {
     type: String,
@@ -36,6 +41,18 @@ const UserSchema: Schema = new Schema({
   },
   avatar: {
     type: String,
+    default: null
+  },
+  provider: {
+    type: String,
+    enum: ['credentials', 'google', 'hybrid'],
+    default: 'credentials',
+    index: true
+  },
+  googleId: {
+    type: String,
+    unique: true,
+    sparse: true,
     default: null
   },
   isActive: {

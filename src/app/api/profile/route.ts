@@ -5,6 +5,7 @@ import Skill from '@/models/Skill';
 import Interest from '@/models/Interest';
 import type { Document } from 'mongoose';
 import type { IProfile } from '@/models/Profile';
+import { normalizeAvatarUrl } from '@/lib/avatar';
 type LeanProfile = Omit<IProfile, keyof Document> & {
   _id: IProfile['_id'];
 };
@@ -33,8 +34,10 @@ interface NormalizedInterest {
   interest: LeanInterest | null;
 }
 
-interface ProfileResponse extends Omit<LeanProfile, 'skills' | 'interests' | '_id'> {
+interface ProfileResponse
+  extends Omit<LeanProfile, 'skills' | 'interests' | '_id' | 'avatar'> {
   id: string;
+  avatar: string | null;
   skills: NormalizedSkill[];
   interests: NormalizedInterest[];
 }
@@ -68,6 +71,7 @@ export async function GET(request: NextRequest) {
 
     const profileWithDetails: ProfileResponse = {
       ...profile,
+      avatar: normalizeAvatarUrl(profile.avatar) ?? null,
       id: toStringId(profile._id),
       skills: skillsWithDetails,
       interests: interestsWithDetails
@@ -137,6 +141,7 @@ export async function PUT(request: NextRequest) {
 
     const profileWithDetails: ProfileResponse = {
       ...updatedProfile,
+      avatar: normalizeAvatarUrl(updatedProfile.avatar) ?? null,
       id: toStringId(updatedProfile._id),
       skills: skillsWithDetails,
       interests: interestsWithDetails

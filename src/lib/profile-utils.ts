@@ -1,4 +1,5 @@
 import { toIsoString, toSanitizedId } from '@/lib/team-response';
+import { normalizeAvatarUrl } from './avatar';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -102,7 +103,7 @@ export function buildBasicUserInfo(userDoc: unknown, profileDoc: unknown): Basic
   const profile: BasicProfileInfo | null = profileRecord
     ? {
         displayName: getString(profileRecord, 'displayName'),
-        avatar: getString(profileRecord, 'avatar') ?? null,
+        avatar: normalizeAvatarUrl(getString(profileRecord, 'avatar')) ?? null,
         role: getString(profileRecord, 'role') ?? null,
       }
     : null;
@@ -146,7 +147,7 @@ export function buildPersonSummary(
       getString(userRecord, 'email') ??
       'Anonymous',
     role: getString(profileRecord, 'role') ?? 'No role specified',
-    avatar: getString(profileRecord, 'avatar') ?? null,
+    avatar: normalizeAvatarUrl(getString(profileRecord, 'avatar')) ?? null,
     location: getString(profileRecord, 'location') ?? 'Location not specified',
     skills: getStringArray(profileRecord, 'skills'),
     experience: getString(profileRecord, 'experience') ?? 'Experience not specified',

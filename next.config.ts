@@ -15,8 +15,13 @@ const nextConfig: NextConfig = {
         port: '3000',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'lh3.googleusercontent.com',
+        port: '',
+        pathname: '/**',
+      },
     ],
-    domains: ['picsum.photos'], // Alternative way to allow external domains
     formats: ['image/webp', 'image/avif'],
     minimumCacheTTL: 60,
   },

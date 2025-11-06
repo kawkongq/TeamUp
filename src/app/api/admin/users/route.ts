@@ -5,6 +5,7 @@ import User from '@/models/User';
 import Profile from '@/models/Profile';
 import Team from '@/models/Team';
 import TeamMember from '@/models/TeamMember';
+import { normalizeAvatarUrl } from '@/lib/avatar';
 
 export async function GET(_request: NextRequest) {
   try {
@@ -28,7 +29,7 @@ export async function GET(_request: NextRequest) {
           email: user.email,
           role: user.role || 'user',
           status: 'active',
-          avatar: profile?.avatar,
+          avatar: normalizeAvatarUrl(profile?.avatar) ?? null,
           createdAt: user.createdAt.toISOString(),
           teamsOwned,
           teamMemberships

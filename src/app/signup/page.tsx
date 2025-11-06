@@ -1,11 +1,14 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function SignupPage() {
+import GoogleAuthButton from '../components/GoogleAuthButton';
+
+function SignupContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -16,10 +19,29 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [successMessage, setSuccessMessage] = useState('');
+  const [oauthError, setOauthError] = useState<string | null>(null);
+  const [googleRedirecting, setGoogleRedirecting] = useState(false);
 
   useEffect(() => {
     checkAuthStatus();
   }, []);
+
+  useEffect(() => {
+    const errorParam = searchParams.get('error');
+    if (!errorParam) {
+      return;
+    }
+
+    const messages: Record<string, string> = {
+      access_denied: 'Google sign up was cancelled. Please try again.',
+      google_not_configured: 'Google sign up is not available yet. Please contact support.',
+      google_oauth_state_mismatch: 'Google sign up session expired. Please try again.',
+      google_oauth_failed: 'Google sign up failed. Please try again.',
+    };
+
+    setOauthError(messages[errorParam] ?? 'Unable to complete Google sign up. Please try again.');
+    router.replace('/signup', { scroll: false });
+  }, [router, searchParams]);
 
   const checkAuthStatus = async () => {
     try {
@@ -63,6 +85,12 @@ export default function SignupPage() {
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  const handleGoogleSignup = () => {
+    setGoogleRedirecting(true);
+    setOauthError(null);
+    window.location.href = '/api/auth/google/start';
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -278,13 +306,16 @@ export default function SignupPage() {
               )}
 
               {/* General Error Display */}
-              {errors.general && (
-                <div className="p-4 bg-red-50 border-2 border-red-200 rounded-xl">
-                  <div className="flex items-center space-x-3">
-                    <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12z" />
-                    </svg>
-                    <p className="text-sm font-medium text-red-600">{errors.general}</p>
+              {(errors.general || oauthError) && (
+                <div className="rounded-xl border border-red-200 bg-red-50/80 px-4 py-3 text-sm text-red-700 shadow-sm backdrop-blur">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-red-100 text-red-600">
+                      !
+                    </span>
+                    <div className="space-y-1">
+                      {errors.general && <p>{errors.general}</p>}
+                      {oauthError && <p>{oauthError}</p>}
+                    </div>
                   </div>
                 </div>
               )}
@@ -305,6 +336,31 @@ export default function SignupPage() {
                 )}
               </button>
             </form>
+          </div>
+
+          <div className="mt-8">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200" />
+              </div>
+              <div className="relative flex justify-center text-sm text-gray-500">
+                <span className="bg-white px-3">Or continue with</span>
+              </div>
+            </div>
+
+            <div className="mt-6">
+              <GoogleAuthButton
+                label="Sign up with Google"
+                onClick={handleGoogleSignup}
+                loading={googleRedirecting}
+                loadingText="Connecting..."
+              />
+              {googleRedirecting && (
+                <p className="mt-3 text-center text-xs text-gray-500">
+                  Redirecting to Google... If nothing happens, please disable popup blockers and try again.
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Terms */}
@@ -331,5 +387,17 @@ export default function SignupPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center text-gray-600">
+        Loading signup...
+      </div>
+    }>
+      <SignupContent />
+    </Suspense>
   );
 }

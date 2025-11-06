@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { debugLog } from '@/lib/logger';
 
@@ -13,7 +12,6 @@ export default function Navbar() {
   const [invitationCount, setInvitationCount] = useState(0);
   const [scrolled, setScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const router = useRouter();
 
   const resetUserState = () => {
     setIsLoggedIn(false);
@@ -188,16 +186,17 @@ export default function Navbar() {
 
       if (response.ok) {
         resetUserState();
-
-        // Redirect to home page
-        router.push('/');
+        window.location.href = '/';
+        return;
       }
+
+      resetUserState();
+      window.location.reload();
     } catch (error) {
       console.error('Sign out error:', error);
       // Force logout even if API call fails
       resetUserState();
-      
-      router.push('/');
+      window.location.reload();
     }
   };
 

@@ -5,6 +5,7 @@ import Profile, { IProfile } from '@/models/Profile';
 import User, { IUser } from '@/models/User';
 import { SESSION_COOKIE_NAME, verifySessionToken } from '@/lib/session';
 import { isValidObjectId } from 'mongoose';
+import { normalizeAvatarUrl } from '@/lib/avatar';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -21,10 +22,16 @@ const expiredCookieConfig = {
   expires: new Date(0),
 };
 
-type SanitisedProfile = Pick<
-  IProfile,
-  'displayName' | 'role' | 'avatar' | 'timezone' | 'skills' | 'interests' | 'isAvailable'
-> & { id: string };
+type SanitisedProfile = {
+  id: string;
+  displayName: IProfile['displayName'];
+  role: IProfile['role'];
+  avatar: string | null;
+  timezone: IProfile['timezone'];
+  skills: IProfile['skills'];
+  interests: IProfile['interests'];
+  isAvailable: IProfile['isAvailable'];
+};
 
 type SanitisedUser = {
   id: string;
@@ -43,7 +50,7 @@ function sanitiseProfile(profile: IProfile | null): SanitisedProfile | null {
     id: profile.id,
     displayName: profile.displayName,
     role: profile.role,
-    avatar: profile.avatar,
+    avatar: normalizeAvatarUrl(profile.avatar) ?? null,
     timezone: profile.timezone,
     skills: profile.skills,
     interests: profile.interests,
