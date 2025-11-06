@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useNotification } from '../contexts/NotificationContext';
 import PersonProfileModal from '../components/PersonProfileModal';
+import { debugLog } from '@/lib/logger';
 
 interface User {
     id: string;
@@ -60,7 +61,6 @@ export default function AdminDashboard() {
     const [searchTerm, setSearchTerm] = useState('');
 
     // Modal states
-    const [selectedUser, setSelectedUser] = useState<any>(null);
     const [showUserModal, setShowUserModal] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
     const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -79,55 +79,7 @@ export default function AdminDashboard() {
     const [eventDetails, setEventDetails] = useState<any>(null);
     const [editingEvent, setEditingEvent] = useState<any>(null);
 
-    useEffect(() => {
-        checkAdminAccess();
-    }, []);
-
-    // Load data when tab changes
-    useEffect(() => {
-        if (isAdmin) {
-            loadData();
-        }
-    }, [activeTab, isAdmin]);
-
-    const checkAdminAccess = async () => {
-        try {
-            // Check authentication via API
-            const response = await fetch('/api/auth/check', {
-                credentials: 'include'
-            });
-
-            if (!response.ok) {
-                router.push('/signin');
-                return;
-            }
-
-            const authData = await response.json();
-            
-            if (!authData.authenticated || !authData.user) {
-                router.push('/signin');
-                return;
-            }
-
-            // Check if user is admin or organizer
-            if (authData.user.role !== 'admin' && authData.user.role !== 'organizer') {
-                showError('Access Denied', 'You do not have permission to access the admin dashboard');
-                router.push('/');
-                return;
-            }
-
-            setIsAdmin(true);
-            loadData();
-        } catch (error) {
-            console.error('Error checking admin access:', error);
-            showError('Error', 'Failed to verify admin access');
-            router.push('/signin');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         try {
             // Load stats first (always needed)
             const statsResponse = await fetch('/api/admin/stats');
@@ -172,7 +124,55 @@ export default function AdminDashboard() {
             console.error('Error loading admin data:', error);
             showError('Load Error', 'Failed to load admin data');
         }
-    };
+    }, [activeTab, showError]);
+
+    const checkAdminAccess = useCallback(async () => {
+        try {
+            // Check authentication via API
+            const response = await fetch('/api/auth/check', {
+                credentials: 'include'
+            });
+
+            if (!response.ok) {
+                router.push('/signin');
+                return;
+            }
+
+            const authData = await response.json();
+
+            if (!authData.authenticated || !authData.user) {
+                router.push('/signin');
+                return;
+            }
+
+            // Check if user is admin or organizer
+            if (authData.user.role !== 'admin' && authData.user.role !== 'organizer') {
+                showError('Access Denied', 'You do not have permission to access the admin dashboard');
+                router.push('/');
+                return;
+            }
+
+            setIsAdmin(true);
+            await loadData();
+        } catch (error) {
+            console.error('Error checking admin access:', error);
+            showError('Error', 'Failed to verify admin access');
+            router.push('/signin');
+        } finally {
+            setLoading(false);
+        }
+    }, [router, showError, loadData]);
+
+    useEffect(() => {
+        void checkAdminAccess();
+    }, [checkAdminAccess]);
+
+    // Load data when tab changes
+    useEffect(() => {
+        if (isAdmin) {
+            void loadData();
+        }
+    }, [isAdmin, loadData]);
 
     const handleViewUser = async (userId: string) => {
         try {
@@ -192,13 +192,13 @@ export default function AdminDashboard() {
 
     const handleViewProfile = async (userId: string) => {
         try {
-            console.log('Loading user profile for:', userId);
+            debugLog('Loading user profile for:', userId);
             const response = await fetch(`/api/admin/users/${userId}`);
-            console.log('Response status:', response.status);
+            debugLog('Response status:', response.status);
 
             if (response.ok) {
                 const data = await response.json();
-                console.log('User data loaded:', data.user);
+                debugLog('User data loaded:', data.user);
                 setUserDetails(data.user);
                 setShowProfileModal(true);
             } else {
@@ -214,13 +214,13 @@ export default function AdminDashboard() {
 
     const handleViewPassword = async (userId: string) => {
         try {
-            console.log('Loading user password for:', userId);
+            debugLog('Loading user password for:', userId);
             const response = await fetch(`/api/admin/users/${userId}/password`);
-            console.log('Response status:', response.status);
+            debugLog('Response status:', response.status);
 
             if (response.ok) {
                 const data = await response.json();
-                console.log('Password data loaded:', data.user);
+                debugLog('Password data loaded:', data.user);
                 setPasswordDetails(data.user);
                 setShowPasswordModal(true);
             } else {
@@ -263,13 +263,13 @@ export default function AdminDashboard() {
 
     const handleViewTeam = async (teamId: string) => {
         try {
-            console.log('Loading team details for:', teamId);
+            debugLog('Loading team details for:', teamId);
             const response = await fetch(`/api/admin/teams/${teamId}`);
-            console.log('Response status:', response.status);
+            debugLog('Response status:', response.status);
 
             if (response.ok) {
                 const data = await response.json();
-                console.log('Team data loaded:', data.team);
+                debugLog('Team data loaded:', data.team);
                 setTeamDetails(data.team);
                 setShowTeamModal(true);
             } else {
@@ -350,13 +350,13 @@ export default function AdminDashboard() {
 
     const handleViewEvent = async (eventId: string) => {
         try {
-            console.log('Loading event details for:', eventId);
+            debugLog('Loading event details for:', eventId);
             const response = await fetch(`/api/admin/events/${eventId}`);
-            console.log('Response status:', response.status);
+            debugLog('Response status:', response.status);
 
             if (response.ok) {
                 const data = await response.json();
-                console.log('Event data loaded:', data.event);
+                debugLog('Event data loaded:', data.event);
                 setEventDetails(data.event);
                 setShowEventModal(true);
             } else {
@@ -656,7 +656,7 @@ export default function AdminDashboard() {
                                 Showing {filteredUsers.length} of {users.length} users
                                 {users.length === 0 && (
                                     <div className="mt-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                                        <p className="text-yellow-800">No users loaded. Try clicking "Refresh Data" or check the console for errors.</p>
+                                        <p className="text-yellow-800">No users loaded. Try clicking &quot;Refresh Data&quot; or check the console for errors.</p>
                                         <p className="text-xs text-yellow-600 mt-1">Debug: Check browser console for API errors</p>
                                     </div>
                                 )}
@@ -1086,7 +1086,7 @@ export default function AdminDashboard() {
                                                                     <p className="text-sm text-gray-600">{request.user.email}</p>
                                                                     <p className="text-xs text-gray-500 font-mono bg-gray-100 px-2 py-1 rounded mt-1 inline-block">ID: {request.user.id}</p>
                                                                     {request.message && (
-                                                                        <p className="text-sm text-gray-700 mt-1">"{request.message}"</p>
+                                                                        <p className="text-sm text-gray-700 mt-1">&quot;{request.message}&quot;</p>
                                                                     )}
                                                                 </div>
                                                             </div>

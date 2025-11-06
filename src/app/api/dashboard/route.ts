@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Types } from 'mongoose';
+
 import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
+import Event from '@/models/Event';
 import Profile from '@/models/Profile';
 import Team from '@/models/Team';
-import Event from '@/models/Event';
-import mongoose from 'mongoose';
+import User from '@/models/User';
+import { buildBasicUserInfo } from '@/lib/profile-utils';
+import { toIsoString, toSanitizedId } from '@/lib/team-response';
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,9 +26,9 @@ export async function GET(request: NextRequest) {
     const totalEvents = await Event.countDocuments();
 
     // Get user profile if userId is provided
-    let userProfile = null;
-    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
-      userProfile = await Profile.findOne({ userId }).lean();
+    let userProfile: Record<string, unknown> | null = null;
+    if (userId && Types.ObjectId.isValid(userId)) {
+      userProfile = await Profile.findOne({ userId }).lean<Record<string, unknown> | null>();
     }
 
     // Get recent teams
@@ -44,9 +47,9 @@ export async function GET(request: NextRequest) {
       .lean();
 
     // Get user data
-    let user = null;
-    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
-      user = await User.findById(userId).lean();
+    let user: Record<string, unknown> | null = null;
+    if (userId && Types.ObjectId.isValid(userId)) {
+      user = await User.findById(userId).lean<Record<string, unknown> | null>();
     }
 
     // Calculate stats
@@ -54,37 +57,48 @@ export async function GET(request: NextRequest) {
       totalProjects: totalTeams,
       completedProjects: Math.floor(totalTeams * 0.7), // Mock data
       totalEarnings: 0, // Mock data
-      averageRating: 4.5 // Mock data
+      averageRating: 4.5, // Mock data
+      totalUsers,
+      totalEvents
     };
 
     // Format recent teams for display
-    const formattedTeams = recentTeams.map(team => ({
-      id: team._id.toString(),
-      name: team.name,
-      description: team.description || 'No description available',
-      status: team.isActive !== false ? 'Active' : 'Inactive',
-      createdAt: team.createdAt
-    }));
+    const formattedTeams = recentTeams.map((team) => {
+      const id = toSanitizedId(team._id ?? team.id);
+      return {
+        id: id || String(team._id ?? team.id ?? ''),
+        name: team.name ?? 'Unnamed team',
+        description: typeof team.description === 'string' ? team.description : 'No description available',
+        status: team.isActive === false ? 'Inactive' : 'Active',
+        createdAt: toIsoString(team.createdAt),
+      };
+    });
 
     // Format recent events for display
-    const formattedEvents = recentEvents.map(event => ({
-      id: event._id.toString(),
-      name: event.name,
-      description: event.description || 'No description available',
-      startDate: event.startDate,
-      endDate: event.endDate,
-      location: event.location || 'Online'
-    }));
+    const formattedEvents = recentEvents.map((event) => {
+      const id = toSanitizedId(event._id ?? event.id);
+      return {
+        id: id || String(event._id ?? event.id ?? ''),
+        name: event.name ?? 'Unnamed event',
+        description: typeof event.description === 'string' ? event.description : 'No description available',
+        startDate: toIsoString(event.startDate),
+        endDate: toIsoString(event.endDate),
+        location: typeof event.location === 'string' ? event.location : 'Online',
+      };
+    });
+
+    const basicUser = buildBasicUserInfo(user, null);
+    const userResponse = basicUser
+      ? {
+          ...basicUser,
+          profile: sanitizeDashboardProfile(userProfile),
+        }
+      : null;
 
     return NextResponse.json({
       success: true,
       data: {
-        user: user ? {
-          id: user._id.toString(),
-          name: user.name,
-          email: user.email,
-          profile: userProfile
-        } : null,
+        user: userResponse,
         stats,
         recentTeams: formattedTeams,
         recentEvents: formattedEvents
@@ -102,4 +116,19 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function sanitizeDashboardProfile(profile: Record<string, unknown> | null) {
+  if (!profile) {
+    return null;
+  }
+
+  return {
+    id: toSanitizedId(profile._id ?? profile.id) || undefined,
+    displayName: typeof profile.displayName === 'string' ? profile.displayName : undefined,
+    bio: typeof profile.bio === 'string' ? profile.bio : undefined,
+    role: typeof profile.role === 'string' ? profile.role : undefined,
+    timezone: typeof profile.timezone === 'string' ? profile.timezone : undefined,
+    userId: typeof profile.userId === 'string' ? profile.userId : undefined,
+  };
 }

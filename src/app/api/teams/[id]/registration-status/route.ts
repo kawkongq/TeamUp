@@ -1,32 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Types } from 'mongoose';
+
 import connectDB from '@/lib/mongodb';
 import EventRegistration from '@/models/EventRegistration';
-import mongoose from 'mongoose';
+import { toIsoString, toSanitizedId } from '@/lib/team-response';
+
+type AuthCheckResponse = {
+  authenticated: boolean;
+  user?: {
+    id: string;
+  } | null;
+};
+
+type RegistrationRecord = {
+  _id: unknown;
+  status?: string;
+  createdAt?: Date | string;
+};
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: Promise<Record<string, string | string[] | undefined>> },
 ) {
   try {
     await connectDB();
-    
-    const { id: teamId } = await params;
+
+    const params = await context.params;
+    const rawId = params.id;
+    const teamId = Array.isArray(rawId) ? rawId[0] : rawId;
+    if (!teamId) {
+      return NextResponse.json({ error: 'Team ID is required' }, { status: 400 });
+    }
     const { searchParams } = new URL(request.url);
     const eventId = searchParams.get('eventId');
 
     if (!eventId) {
-      return NextResponse.json(
-        { error: 'Event ID is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Event ID is required' }, { status: 400 });
     }
 
-    // Validate ObjectIds
-    if (!mongoose.Types.ObjectId.isValid(teamId) || !mongoose.Types.ObjectId.isValid(eventId)) {
+    if (!Types.ObjectId.isValid(teamId) || !Types.ObjectId.isValid(eventId)) {
       return NextResponse.json({ error: 'Invalid IDs' }, { status: 400 });
     }
-    
-    // Check authentication
+
     const authResponse = await fetch(`${request.nextUrl.origin}/api/auth/check`, {
       headers: {
         cookie: request.headers.get('cookie') || '',
@@ -37,44 +52,40 @@ export async function GET(
       return NextResponse.json({
         success: true,
         isRegistered: false,
-        requiresAuth: true
+        requiresAuth: true,
       });
     }
 
-    const authData = await authResponse.json();
-    
-    if (!authData.authenticated || !authData.user) {
+    const authData = (await authResponse.json()) as AuthCheckResponse;
+    if (!authData.authenticated || !authData.user?.id) {
       return NextResponse.json({
         success: true,
         isRegistered: false,
-        requiresAuth: true
+        requiresAuth: true,
       });
     }
 
-    // Check if team is registered for this event
-    const registration = await EventRegistration.findOne({
-      eventId,
-      teamId
-    }).lean();
+    const registration = await EventRegistration.findOne({ eventId, teamId }).lean<RegistrationRecord | null>();
 
     return NextResponse.json({
       success: true,
-      isRegistered: !!registration,
+      isRegistered: Boolean(registration),
       requiresAuth: false,
-      registration: registration ? {
-        id: registration._id.toString(),
-        status: registration.status || 'registered',
-        createdAt: registration.createdAt
-      } : null
+      registration: registration
+        ? {
+            id: toSanitizedId(registration._id),
+            status: registration.status || 'registered',
+            createdAt: toIsoString(registration.createdAt),
+          }
+        : null,
     });
-
   } catch (error) {
     console.error('Check team registration status error:', error);
+    const message =
+      error instanceof Error ? error.message : 'Failed to check team registration status';
     return NextResponse.json(
-      { error: 'Failed to check team registration status',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
+      { error: 'Failed to check team registration status', details: message },
+      { status: 500 },
     );
   }
 }

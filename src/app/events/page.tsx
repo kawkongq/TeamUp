@@ -4,13 +4,12 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Button from '../components/Button';
 import { useToast } from '../components/Toast';
-import LoadingSpinner from '../components/LoadingSpinner';
 import CreateTeamForEvent from '../components/CreateTeamForEvent';
 import EventTimeline from '../components/EventTimeline';
 import EventResources from '../components/EventResources';
 import EventRegistrations from '../components/EventRegistrations';
 import TeamEventRegistration from '../components/TeamEventRegistration';
-import { canCreateEvents, getRoleDescription } from '@/lib/auth-utils';
+import { canCreateEvents } from '@/lib/auth-utils';
 
 interface Event {
   id: string;
@@ -148,28 +147,6 @@ export default function EventsPage() {
     { id: 'active', label: 'Active', count: events.filter(e => e.isActive).length },
     { id: 'upcoming', label: 'Upcoming', count: events.filter(e => new Date(e.startDate) > new Date()).length }
   ];
-
-  const getEventTypeColor = (type: string) => {
-    const colors = {
-      hackathon: 'bg-purple-100 text-purple-800',
-      conference: 'bg-blue-100 text-blue-800',
-      meetup: 'bg-green-100 text-green-800',
-      workshop: 'bg-orange-100 text-orange-800',
-      startup: 'bg-pink-100 text-pink-800'
-    };
-    return colors[type as keyof typeof colors] || 'bg-gray-100 text-gray-800';
-  };
-
-  const getEventTypeIcon = (type: string) => {
-    const icons = {
-      hackathon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
-      conference: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z',
-      meetup: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z',
-      workshop: 'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z',
-      startup: 'M13 10V3L4 14h7v7l9-11h-7z'
-    };
-    return icons[type as keyof typeof icons] || 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10';
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">

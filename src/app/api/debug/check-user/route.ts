@@ -1,60 +1,98 @@
+import { isValidObjectId } from 'mongoose';
 import { NextRequest, NextResponse } from 'next/server';
+
 import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
-import Profile from '@/models/Profile';
+import Profile, { IProfile } from '@/models/Profile';
+import User, { IUser } from '@/models/User';
+import { SESSION_COOKIE_NAME, verifySessionToken } from '@/lib/session';
+
+type SanitisedProfile = Pick<IProfile, 'displayName' | 'role' | 'avatar' | 'timezone'> & {
+  id: string;
+};
+
+type SanitisedUser = {
+  id: string;
+  email: string;
+  name: string;
+  role: IUser['role'];
+  hasPassword: boolean;
+  createdAt: string;
+};
+
+function sanitiseProfile(profile: IProfile | null): SanitisedProfile | null {
+  if (!profile) {
+    return null;
+  }
+
+  return {
+    id: profile.id,
+    displayName: profile.displayName,
+    role: profile.role,
+    avatar: profile.avatar,
+    timezone: profile.timezone,
+  };
+}
 
 export async function GET(request: NextRequest) {
   try {
-    const userId = request.cookies.get('user_id')?.value;
-    
-    console.log('🔍 Debug check-user called');
-    console.log('Cookie user_id:', userId);
+    const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+    const session = verifySessionToken(sessionToken);
 
-    if (!userId) {
-      return NextResponse.json({
-        error: 'No user_id cookie found',
-        cookies: Object.fromEntries(request.cookies.getAll().map(c => [c.name, c.value]))
-      });
+    if (!session) {
+      return NextResponse.json(
+        {
+          error: 'No valid session cookie found',
+          cookies: Object.fromEntries(
+            request.cookies.getAll().map(({ name, value }) => [name, value]),
+          ),
+        },
+        { status: 401 },
+      );
+    }
+
+    const userId = session.sub;
+
+    if (!isValidObjectId(userId)) {
+      return NextResponse.json(
+        {
+          error: 'Invalid user ID format in cookie',
+          userId,
+        },
+        { status: 400 },
+      );
     }
 
     await connectDB();
-    
-    const user = await User.findById(userId);
-    const profile = user ? await Profile.findOne({ userId: user._id.toString() }) : null;
 
+    const user = (await User.findById(userId)) as IUser | null;
     if (!user) {
-      console.log('❌ User not found in database!');
-      return NextResponse.json({
-        error: 'User not found in database',
-        userId: userId,
-        suggestion: 'Clear cookies and sign in again'
-      }, { status: 404 });
+      return NextResponse.json(
+        {
+          error: 'User not found in database',
+          userId,
+          suggestion: 'Clear cookies and sign in again',
+        },
+        { status: 404 },
+      );
     }
 
-    console.log('✅ User found:', user.email);
+    const profile = (await Profile.findOne({ userId: user.id })) as IProfile | null;
 
     return NextResponse.json({
       success: true,
       user: {
-        id: user._id.toString(),
+        id: user.id,
         email: user.email,
         name: user.name,
         role: user.role,
-        hasPassword: !!user.passwordHash,
-        createdAt: user.createdAt
-      },
-      profile: profile ? {
-        id: profile._id.toString(),
-        displayName: profile.displayName,
-        role: profile.role
-      } : null
+        hasPassword: Boolean(user.passwordHash),
+        createdAt: user.createdAt?.toISOString?.() ?? new Date().toISOString(),
+      } satisfies SanitisedUser,
+      profile: sanitiseProfile(profile),
     });
-
   } catch (error) {
     console.error('Debug check error:', error);
-    return NextResponse.json({
-      error: 'Debug check failed',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+    const details = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: 'Debug check failed', details }, { status: 500 });
   }
 }

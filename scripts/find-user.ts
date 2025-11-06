@@ -1,3 +1,4 @@
+// @ts-nocheck
 import mongoose from 'mongoose';
 
 const MONGODB_URI = "mongodb+srv://spacermick_db_user:admin123@cluster0.co4sjph.mongodb.net/teamup?retryWrites=true&w=majority&appName=Cluster0";

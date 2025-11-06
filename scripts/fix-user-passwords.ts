@@ -1,8 +1,19 @@
+// @ts-nocheck
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 // Connect to MongoDB
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://spacermick_db_user:admin123@cluster0.co4sjph.mongodb.net/teamup?retryWrites=true&w=majority&appName=Cluster0";
+const MONGODB_URI =
+  process.env.MONGODB_URI ??
+  process.env.NEXT_PUBLIC_MONGODB_URI ??
+  '';
+
+if (!MONGODB_URI) {
+  throw new Error('Missing MONGODB_URI. Please set it in your environment variables.');
+}
 
 async function connectDB() {
   if (mongoose.connections[0].readyState) {

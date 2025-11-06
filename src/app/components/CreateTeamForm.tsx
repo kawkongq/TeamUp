@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { debugLog } from "@/lib/logger";
 
 interface Event {
   id: string;
@@ -133,8 +134,8 @@ export default function CreateTeamForm({ onClose, onSuccess }: CreateTeamFormPro
         lookingFor: formData.lookingFor.join(', ')
       };
 
-      console.log('Submitting team data:', teamData);
-      console.log('Current user:', currentUser);
+      debugLog('Submitting team data:', teamData);
+      debugLog('Current user:', currentUser);
 
       const response = await fetch("/api/teams", {
         method: "POST",
@@ -144,8 +145,8 @@ export default function CreateTeamForm({ onClose, onSuccess }: CreateTeamFormPro
         body: JSON.stringify(teamData),
       });
 
-      console.log('Response status:', response.status);
-      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+      debugLog('Response status:', response.status);
+      debugLog('Response headers:', Object.fromEntries(response.headers.entries()));
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -154,7 +155,7 @@ export default function CreateTeamForm({ onClose, onSuccess }: CreateTeamFormPro
       }
 
       const result = await response.json();
-      console.log('Team created successfully:', result);
+      debugLog('Team created successfully:', result);
       onSuccess();
       onClose();
     } catch (err) {

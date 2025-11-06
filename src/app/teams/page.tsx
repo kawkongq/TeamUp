@@ -1,32 +1,42 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import Image from 'next/image';
 import CreateTeamForm from '../components/CreateTeamForm';
 import JoinTeamButton from '../components/JoinTeamButton';
 import JoinRequestsModal from '../components/JoinRequestsModal';
 import InviteUserModal from '../components/InviteUserModal';
 import { TeamCardSkeleton } from '../components/SkeletonLoader';
-import Button from '../components/Button';
-import { useToast } from '../components/Toast';
 import TeamManagementModal from '../components/TeamManagementModal';
 import { canCreateEvents, canCreateTeams } from '@/lib/auth-utils';
+import { debugLog as baseDebugLog } from '@/lib/logger';
+
+interface TeamUser {
+  id: string;
+  name?: string;
+  email?: string;
+  profile?: {
+    displayName?: string;
+    avatar?: string;
+    role?: string;
+  };
+}
 
 interface TeamMember {
   id: string;
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    profile?: {
-      displayName: string;
-      avatar: string;
-      role: string;
-    };
-  };
+  userId?: string;
+  user: TeamUser | null;
   role: string;
   joinedAt: string;
+  isActive: boolean;
+}
+
+interface TeamJoinRequest {
+  id: string;
+  user: TeamUser | null;
+  message?: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  createdAt: string;
 }
 
 interface Team {
@@ -41,16 +51,7 @@ interface Team {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
-  owner: {
-    id: string;
-    name: string;
-    email: string;
-    profile?: {
-      displayName: string;
-      avatar: string;
-      role: string;
-    };
-  };
+  owner: (TeamUser & { profile?: TeamUser['profile'] }) | null;
   event?: {
     id: string;
     name: string;
@@ -60,6 +61,7 @@ interface Team {
     location?: string;
   };
   members: TeamMember[];
+  joinRequests: TeamJoinRequest[];
 }
 
 export default function TeamsPage() {
@@ -76,11 +78,9 @@ export default function TeamsPage() {
   const [showInviteModal, setShowInviteModal] = useState<Team | null>(null);
   const [selectedTeamForManagement, setSelectedTeamForManagement] = useState<Team | null>(null);
 
-  // Debug logging
-  const debugLog = (message: string, data?: any) => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`[TeamsPage Debug] ${message}`, data);
-    }
+  // Debug logging helper
+  const debugLog = (message: string, data?: unknown) => {
+    baseDebugLog(`[TeamsPage Debug] ${message}`, data);
   };
 
   // Network status monitoring
@@ -149,9 +149,8 @@ export default function TeamsPage() {
         const data = await response.json();
         debugLog('Teams data received:', { count: data.teams?.length || 0 });
 
-        // Validate and sanitize the data
-        const validatedTeams = validateTeamsData(data.teams || []);
-        setTeams(validatedTeams);
+        const sanitizedTeams = normalizeTeams(data.teams);
+        setTeams(sanitizedTeams);
         setRetryCount(0);
       } else {
         const errorText = await response.text();
@@ -190,55 +189,187 @@ export default function TeamsPage() {
     }
   };
 
-  // Data validation and sanitization
-  const validateTeamsData = (teams: any[]): Team[] => {
-    debugLog('Validating teams data:', { count: teams.length });
+  const normalizeTeams = (rawTeams: unknown): Team[] => {
+    if (!Array.isArray(rawTeams)) {
+      return [];
+    }
 
-    return teams.filter(team => {
-      // Basic validation
-      if (!team || typeof team !== 'object') {
-        debugLog('Invalid team object:', team);
-        return false;
+    return rawTeams
+      .map((team, index) => normalizeTeam(team, index))
+      .filter((team): team is Team => Boolean(team));
+  };
+
+  const normalizeTeam = (rawTeam: unknown, fallbackIndex: number): Team | null => {
+    if (!rawTeam || typeof rawTeam !== 'object') {
+      debugLog('Invalid team object received from API:', rawTeam);
+      return null;
+    }
+
+    const team = rawTeam as Record<string, unknown>;
+    const id = ensureString(team.id ?? team._id, `team-${fallbackIndex}`);
+    const name = ensureString(team.name, '');
+    const description = ensureString(team.description, '');
+    const ownerId = ensureString(team.ownerId, '');
+    const eventId = ensureString(team.eventId, '');
+    const maxMembers = ensureNumber(team.maxMembers, 10);
+
+    if (!id || !name || !description || !ownerId || !eventId) {
+      debugLog('Team missing required fields:', team);
+      return null;
+    }
+
+    const owner = normalizeUser(team.owner, `${id}-owner`);
+    const event = normalizeEvent(team.event);
+    const members = normalizeMembers(team.members, id);
+    const joinRequests = normalizeJoinRequests(team.joinRequests, id);
+
+    return {
+      id,
+      name,
+      description,
+      ownerId,
+      eventId,
+      maxMembers: Math.min(Math.max(maxMembers, 1), 20),
+      tags: ensureString(team.tags, ''),
+      lookingFor: ensureString(team.lookingFor, ''),
+      isActive: team.isActive !== false,
+      createdAt: ensureIsoString(team.createdAt),
+      updatedAt: ensureIsoString(team.updatedAt),
+      owner,
+      event,
+      members,
+      joinRequests,
+    };
+  };
+
+  const normalizeMembers = (rawMembers: unknown, teamId: string): TeamMember[] => {
+    if (!Array.isArray(rawMembers)) {
+      return [];
+    }
+
+    return rawMembers.map((member, index) => {
+      const record = member && typeof member === 'object' ? (member as Record<string, unknown>) : {};
+      const userRecord = record.user && typeof record.user === 'object' ? (record.user as Record<string, unknown>) : {};
+      const memberId = ensureString(record.id ?? record._id, `${teamId}-member-${index}`);
+      const userId = ensureString(record.userId ?? userRecord._id ?? userRecord.id, `${teamId}-user-${index}`);
+      const role = ensureString(record.role, 'member');
+
+      return {
+        id: memberId,
+        userId,
+        user: normalizeUser(userRecord, `${memberId}-user`),
+        role,
+        joinedAt: ensureIsoString(record.joinedAt),
+        isActive: record.isActive !== false,
+      };
+    });
+  };
+
+  const normalizeJoinRequests = (rawRequests: unknown, teamId: string): TeamJoinRequest[] => {
+    if (!Array.isArray(rawRequests)) {
+      return [];
+    }
+
+    return rawRequests.map((request, index) => {
+      const record = request && typeof request === 'object' ? (request as Record<string, unknown>) : {};
+      const userRecord = record.user && typeof record.user === 'object' ? (record.user as Record<string, unknown>) : {};
+      const requestId = ensureString(record.id ?? record._id, `${teamId}-request-${index}`);
+      const statusRaw = ensureString(record.status, 'PENDING').toUpperCase();
+      const status: TeamJoinRequest['status'] =
+        statusRaw === 'APPROVED' || statusRaw === 'REJECTED' ? (statusRaw as TeamJoinRequest['status']) : 'PENDING';
+
+      return {
+        id: requestId,
+        user: normalizeUser(userRecord, `${requestId}-user`),
+        message: ensureString(record.message, ''),
+        status,
+        createdAt: ensureIsoString(record.createdAt),
+      };
+    });
+  };
+
+  const normalizeUser = (rawUser: unknown, fallbackId: string): TeamUser | null => {
+    if (!rawUser || typeof rawUser !== 'object') {
+      return null;
+    }
+
+    const user = rawUser as Record<string, unknown>;
+    const id = ensureString(user.id ?? user._id, fallbackId);
+    const name = ensureString(user.name, undefined);
+    const email = ensureString(user.email, undefined);
+
+    return {
+      id,
+      name,
+      email,
+      profile: user.profile && typeof user.profile === 'object' ? user.profile : undefined,
+    };
+  };
+
+  const normalizeEvent = (rawEvent: unknown): Team['event'] => {
+    if (!rawEvent || typeof rawEvent !== 'object') {
+      return undefined;
+    }
+
+    const event = rawEvent as Record<string, unknown>;
+    return {
+      id: ensureString(event.id ?? event._id, ''),
+      name: ensureString(event.name, ''),
+      type: ensureString(event.type, ''),
+      startDate: ensureIsoString(event.startDate),
+      endDate: ensureIsoString(event.endDate),
+      location: ensureString(event.location, undefined),
+    };
+  };
+
+  function ensureString(value: unknown, fallback: string, trim?: boolean): string;
+  function ensureString(value: unknown, fallback: undefined, trim?: boolean): string | undefined;
+  function ensureString(value: unknown, fallback: string | undefined, trim = true): string | undefined {
+    if (typeof value === 'string') {
+      return trim ? value.trim() : value;
+    }
+
+    if (
+      value &&
+      typeof value === 'object' &&
+      'toString' in value &&
+      typeof (value as { toString: () => unknown }).toString === 'function'
+    ) {
+      const converted = (value as { toString: () => unknown }).toString();
+      if (typeof converted === 'string') {
+        return trim ? converted.trim() : converted;
       }
+    }
 
-      // Required fields validation
-      const requiredFields = ['id', 'name', 'description', 'ownerId', 'maxMembers'];
-      for (const field of requiredFields) {
-        if (!team[field]) {
-          debugLog(`Missing required field: ${field}`, team);
-          return false;
-        }
+    return fallback;
+  }
+
+  const ensureNumber = (value: unknown, fallback: number): number => {
+    if (typeof value === 'number' && !Number.isNaN(value)) {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      if (!Number.isNaN(parsed)) {
+        return parsed;
       }
+    }
 
-      // Ensure members array exists
-      if (!Array.isArray(team.members)) {
-        team.members = [];
-        debugLog('Fixed missing members array for team:', team.id);
-      }
+    return fallback;
+  };
 
-      // Ensure owner object exists
-      if (!team.owner || typeof team.owner !== 'object') {
-        debugLog('Invalid owner object for team:', team.id);
-        return false;
-      }
+  const ensureIsoString = (value: unknown): string => {
+    if (typeof value === 'string') {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+    }
 
-      // Ensure event object exists (optional but if present should be valid)
-      if (team.event && typeof team.event !== 'object') {
-        debugLog('Invalid event object for team:', team.id);
-        team.event = undefined;
-      }
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
 
-      return true;
-    }).map(team => ({
-      ...team,
-      // Ensure safe defaults
-      tags: team.tags || '',
-      lookingFor: team.lookingFor || '',
-      isActive: team.isActive ?? true,
-      createdAt: team.createdAt || new Date().toISOString(),
-      updatedAt: team.updatedAt || new Date().toISOString(),
-      maxMembers: Math.max(1, parseInt(team.maxMembers) || 1),
-    }));
+    return new Date().toISOString();
   };
 
   const handleRetry = () => {
@@ -326,15 +457,30 @@ export default function TeamsPage() {
     setShowCreateForm(false);
   };
 
-  // Safe access helper for team properties
-  const safeGet = (obj: any, path: string, defaultValue: any = '') => {
-    try {
-      return path.split('.').reduce((current, key) => current?.[key], obj) ?? defaultValue;
-    } catch (error) {
-      debugLog('Error accessing object path:', { path, error });
-      return defaultValue;
-    }
-  };
+  const getTeamTags = (team: Team) =>
+    team.tags
+      ? team.tags
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean)
+      : [];
+
+  const getLookingFor = (team: Team) =>
+    team.lookingFor
+      ? team.lookingFor
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [];
+
+  const getMemberDisplayName = (member: TeamMember) =>
+    member.user?.profile?.displayName ?? member.user?.name ?? 'Member';
+
+  const getMemberAvatar = (member: TeamMember) => member.user?.profile?.avatar ?? null;
+
+  const getMemberInitial = (member: TeamMember) => getMemberDisplayName(member).charAt(0).toUpperCase();
+
+  const getTeamInitial = (team: Team) => team.name?.charAt(0)?.toUpperCase() ?? 'T';
 
   // Helper functions for team interactions
   const isTeamOwner = (team: Team) => currentUser && team.ownerId === currentUser.id;
@@ -495,11 +641,11 @@ export default function TeamsPage() {
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center space-x-3">
                     <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-lg">
-                      {safeGet(team, 'name', 'T').charAt(0).toUpperCase()}
+                      {getTeamInitial(team)}
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-gray-900">{safeGet(team, 'name', 'Unnamed Team')}</h3>
-                      <p className="text-sm text-gray-500">{formatDate(safeGet(team, 'createdAt', ''))}</p>
+                      <h3 className="text-xl font-bold text-gray-900">{team.name || 'Unnamed Team'}</h3>
+                      <p className="text-sm text-gray-500">{formatDate(team.createdAt)}</p>
                     </div>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(team)}`}>
@@ -507,26 +653,26 @@ export default function TeamsPage() {
                   </span>
                 </div>
 
-                <p className="text-gray-600 mb-4 line-clamp-2">{safeGet(team, 'description', 'No description available')}</p>
+                <p className="text-gray-600 mb-4 line-clamp-2">{team.description || 'No description available'}</p>
 
                 {/* Event - with safe access */}
                 {team.event && (
                   <div className="bg-indigo-50 rounded-lg p-3 mb-4">
                     <p className="text-sm font-medium text-indigo-900">Event</p>
-                    <p className="text-sm text-indigo-700">{safeGet(team.event, 'name', 'Unknown Event')}</p>
+                    <p className="text-sm text-indigo-700">{team.event?.name ?? 'Unknown Event'}</p>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${safeGet(team.event, 'type') === 'hackathon' ? 'bg-yellow-100 text-yellow-800' :
-                        safeGet(team.event, 'type') === 'case-competition' ? 'bg-blue-100 text-blue-800' :
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${team.event?.type === 'hackathon' ? 'bg-yellow-100 text-yellow-800' :
+                        team.event?.type === 'case-competition' ? 'bg-blue-100 text-blue-800' :
                           'bg-green-100 text-green-800'
                         }`}>
-                        {safeGet(team.event, 'type') === 'hackathon' && '🏆'}
-                        {safeGet(team.event, 'type') === 'case-competition' && '📋'}
-                        {safeGet(team.event, 'type') === 'innovation-challenge' && '💡'}
-                        {safeGet(team.event, 'type', 'other')}
+                        {team.event?.type === 'hackathon' && '🏆'}
+                        {team.event?.type === 'case-competition' && '📋'}
+                        {team.event?.type === 'innovation-challenge' && '💡'}
+                        {team.event?.type ?? 'other'}
                       </span>
-                      {safeGet(team.event, 'location') && (
+                      {team.event?.location && (
                         <span className="text-xs text-indigo-600 flex items-center gap-1">
-                          📍 {safeGet(team.event, 'location')}
+                          📍 {team.event.location}
                         </span>
                       )}
                     </div>
@@ -539,11 +685,11 @@ export default function TeamsPage() {
                     <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
-                    {safeGet(team, 'members.length', 0)}/{safeGet(team, 'maxMembers', 1)} members
+                    {team.members.length}/{team.maxMembers} members
                   </span>
                   <span className="text-indigo-600 font-medium">
-                    {safeGet(team, 'members.length', 0) < safeGet(team, 'maxMembers', 1)
-                      ? `${safeGet(team, 'maxMembers', 1) - safeGet(team, 'members.length', 0)} spots open`
+                    {team.members.length < team.maxMembers
+                      ? `${team.maxMembers - team.members.length} spots open`
                       : 'Team full'}
                   </span>
                 </div>
@@ -561,10 +707,10 @@ export default function TeamsPage() {
                         isOwner ? 'bg-indigo-50' : 'bg-gray-50'
                       }`}>
                         <div className="relative">
-                          {safeGet(member, 'user.profile.avatar') ? (
+                          {getMemberAvatar(member) ? (
                             <Image
-                              src={safeGet(member, 'user.profile.avatar')}
-                              alt={safeGet(member, 'user.profile.displayName') || safeGet(member, 'user.name') || 'Member'}
+                              src={getMemberAvatar(member) as string}
+                              alt={getMemberDisplayName(member)}
                               width={32}
                               height={32}
                               className="w-8 h-8 rounded-full object-cover"
@@ -576,7 +722,7 @@ export default function TeamsPage() {
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium ${
                               isOwner ? 'bg-indigo-600' : 'bg-gray-600'
                             }`}>
-                              {(safeGet(member, 'user.profile.displayName') || safeGet(member, 'user.name') || 'M').charAt(0).toUpperCase()}
+                              {getMemberInitial(member)}
                             </div>
                           )}
                           {isOwner && (
@@ -585,10 +731,10 @@ export default function TeamsPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-gray-900 truncate">
-                            {safeGet(member, 'user.profile.displayName') || safeGet(member, 'user.name') || 'Member'}
+                            {getMemberDisplayName(member)}
                           </p>
                           <p className="text-xs text-gray-500">
-                            {isOwner ? 'Owner' : (safeGet(member, 'role', 'Member'))} • {formatDate(safeGet(member, 'joinedAt', ''))}
+                            {isOwner ? 'Owner' : member.role || 'Member'} • {formatDate(member.joinedAt)}
                           </p>
                         </div>
                       </div>
@@ -616,18 +762,18 @@ export default function TeamsPage() {
               {/* Team Skills & Looking For */}
               <div className="p-6">
                 {/* Skills */}
-                {safeGet(team, 'tags') && (
+                {getTeamTags(team).length > 0 && (
                   <div className="mb-4">
                     <h4 className="text-sm font-medium text-gray-900 mb-2">Skills</h4>
                     <div className="flex flex-wrap gap-2">
-                      {safeGet(team, 'tags', '').split(',').slice(0, 4).map((tag: string, index: number) => (
+                      {getTeamTags(team).slice(0, 4).map((tag, index) => (
                         <span key={index} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full">
-                          {tag.trim()}
+                          {tag}
                         </span>
                       ))}
-                      {safeGet(team, 'tags', '').split(',').length > 4 && (
+                      {getTeamTags(team).length > 4 && (
                         <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
-                          +{safeGet(team, 'tags', '').split(',').length - 4} more
+                          +{getTeamTags(team).length - 4} more
                         </span>
                       )}
                     </div>
@@ -635,18 +781,18 @@ export default function TeamsPage() {
                 )}
 
                 {/* Looking For */}
-                {safeGet(team, 'lookingFor') && safeGet(team, 'members.length', 0) < safeGet(team, 'maxMembers', 1) && (
+                {getLookingFor(team).length > 0 && team.members.length < team.maxMembers && (
                   <div className="mb-4">
                     <h4 className="text-sm font-medium text-gray-900 mb-2">Looking For</h4>
                     <div className="flex flex-wrap gap-2">
-                      {safeGet(team, 'lookingFor', '').split(',').slice(0, 3).map((role: string, index: number) => (
+                      {getLookingFor(team).slice(0, 3).map((role, index) => (
                         <span key={index} className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
-                          {role.trim()}
+                          {role}
                         </span>
                       ))}
-                      {safeGet(team, 'lookingFor', '').split(',').length > 3 && (
+                      {getLookingFor(team).length > 3 && (
                         <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
-                          +{safeGet(team, 'lookingFor', '').split(',').length - 3} more
+                          +{getLookingFor(team).length - 3} more
                         </span>
                       )}
                     </div>
@@ -658,7 +804,7 @@ export default function TeamsPage() {
                   {/* Join Team Button */}
                   <JoinTeamButton
                     teamId={team.id}
-                    teamName={safeGet(team, 'name', 'Team')}
+                    teamName={team.name || 'Team'}
                     currentUserId={currentUser?.id}
                     isOwner={isTeamOwner(team)}
                     isAlreadyMember={isTeamMember(team)}

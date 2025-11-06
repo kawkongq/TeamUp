@@ -1,8 +1,11 @@
+import { Types } from 'mongoose';
 import { NextRequest, NextResponse } from 'next/server';
+
 import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
 import Profile from '@/models/Profile';
-import mongoose from 'mongoose';
+import User from '@/models/User';
+import { buildBasicUserInfo } from '@/lib/profile-utils';
+import { toSanitizedId } from '@/lib/team-response';
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,52 +14,52 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q') || '';
     const currentUserId = searchParams.get('currentUserId');
-    const limit = parseInt(searchParams.get('limit') || '20');
+    const limitInput = Number.parseInt(searchParams.get('limit') || '20', 10);
+    const limit = Number.isNaN(limitInput) ? 20 : Math.min(Math.max(limitInput, 1), 100);
 
-    // Build search conditions
-    const searchConditions: any = {
-      $and: [
-        { name: { $not: /^\[DELETED\]/ } },
-        {
-          $or: [
-            { name: { $regex: query, $options: 'i' } },
-            { email: { $regex: query, $options: 'i' } }
-          ]
-        }
-      ]
-    };
+    const conditions: Record<string, unknown>[] = [
+      { name: { $not: /^\[DELETED\]/ } },
+      {
+        $or: [
+          { name: { $regex: query, $options: 'i' } },
+          { email: { $regex: query, $options: 'i' } },
+        ],
+      },
+    ];
 
-    // Exclude current user if provided
-    if (currentUserId && mongoose.Types.ObjectId.isValid(currentUserId)) {
-      searchConditions.$and.push({ _id: { $ne: currentUserId } });
+    if (currentUserId && Types.ObjectId.isValid(currentUserId)) {
+      conditions.push({ _id: { $ne: new Types.ObjectId(currentUserId) } });
     }
 
-    // Get users (exclude deleted users and current user)
+    const searchConditions: Record<string, unknown> = {
+      $and: [
+        ...conditions,
+      ],
+    };
+
     const users = await User.find(searchConditions)
       .select('_id name email')
       .limit(limit)
       .sort({ name: 1 })
       .lean();
 
-    // Get profiles for these users
     const usersWithProfiles = await Promise.all(
       users.map(async (user) => {
-        const profile = await Profile.findOne({ userId: user._id.toString() }).lean();
-        
-        return {
-          id: user._id.toString(),
-          name: user.name,
-          email: user.email,
-          profile: profile ? {
-            displayName: profile.displayName,
-            avatar: profile.avatar,
-            role: profile.role
-          } : null
-        };
+        const userIdValue = toSanitizedId(user._id ?? user.id);
+        if (!userIdValue) {
+          return null;
+        }
+        const profile = await Profile.findOne({ userId: userIdValue }).lean();
+        return buildBasicUserInfo(
+          { ...user, _id: userIdValue, id: userIdValue },
+          profile,
+        );
       })
     );
 
-    return NextResponse.json({ users: usersWithProfiles });
+    return NextResponse.json({
+      users: usersWithProfiles.filter((user): user is NonNullable<typeof user> => Boolean(user)),
+    });
   } catch (error) {
     console.error('Error searching users:', error);
     return NextResponse.json(

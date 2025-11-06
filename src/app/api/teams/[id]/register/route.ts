@@ -1,248 +1,213 @@
 import { NextRequest, NextResponse } from 'next/server';
+
 import connectDB from '@/lib/mongodb';
+import Event from '@/models/Event';
 import EventRegistration from '@/models/EventRegistration';
 import Team from '@/models/Team';
-import Event from '@/models/Event';
-import User from '@/models/User';
-import Profile from '@/models/Profile';
 import TeamMember from '@/models/TeamMember';
+import {
+  buildTeamResponse,
+  toIsoString,
+  toSanitizedId,
+} from '@/lib/team-response';
+
+type AuthCheckResponse = {
+  authenticated: boolean;
+  user?: {
+    id: string;
+  } | null;
+};
+
+type RegisterPayload = {
+  eventId?: unknown;
+  message?: unknown;
+};
+
+type CancelPayload = {
+  eventId?: unknown;
+};
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<Record<string, string | string[] | undefined>> },
 ) {
   try {
-    const teamId = params.id;
-    console.log('[Team Registration API] Starting registration for team:', teamId);
-    
-    // Check authentication
-    const authResponse = await fetch(`${request.nextUrl.origin}/api/auth/check`, {
-      headers: {
-        cookie: request.headers.get('cookie') || '',
-      },
-    });
-
-    if (!authResponse.ok) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      );
+    const params = await context.params;
+    const rawId = params.id;
+    const teamId = Array.isArray(rawId) ? rawId[0] : rawId;
+    if (!teamId) {
+      return NextResponse.json({ error: 'Team ID is required' }, { status: 400 });
     }
 
-    const authData = await authResponse.json();
-    
-    if (!authData.authenticated || !authData.user) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      );
+    const authResult = await getAuthenticatedUserId(request);
+    if (!authResult.ok) {
+      return authResult.response;
     }
 
-    const userId = authData.user.id;
-    const body = await request.json();
-    const { eventId, message } = body;
+    const { userId } = authResult;
+    const body = (await request.json()) as RegisterPayload;
+    const eventId = typeof body.eventId === 'string' ? body.eventId.trim() : '';
+    const message =
+      typeof body.message === 'string' && body.message.trim().length > 0
+        ? body.message.trim()
+        : undefined;
 
-    console.log('[Team Registration API] User ID:', userId, 'Team ID:', teamId, 'Event ID:', eventId);
+    if (!eventId) {
+      return NextResponse.json({ error: 'Event ID is required' }, { status: 400 });
+    }
 
     await connectDB();
-    
-    // Check if team exists and user is the owner or member
-    const team = await Team.findById(teamId);
 
+    const team = await Team.findById(teamId);
     if (!team) {
-      return NextResponse.json(
-        { error: 'Team not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    // Check if user is team owner or member
     const isOwner = team.ownerId === userId;
     const isMember = await TeamMember.findOne({ teamId, userId, isActive: true });
-
     if (!isOwner && !isMember) {
       return NextResponse.json(
         { error: 'You must be a team owner or member to register' },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
-    // Check if event exists and is active
     const event = await Event.findById(eventId);
-
     if (!event) {
-      return NextResponse.json(
-        { error: 'Event not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
 
     if (!event.isActive) {
-      return NextResponse.json(
-        { error: 'Event is not active' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Event is not active' }, { status: 400 });
     }
 
-    // Check if team is already registered for this event
-    const existingRegistration = await EventRegistration.findOne({
-      eventId,
-      teamId
-    });
-
+    const existingRegistration = await EventRegistration.findOne({ eventId, teamId });
     if (existingRegistration) {
       return NextResponse.json(
         { error: 'Team is already registered for this event' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // Create registration
     const registration = await EventRegistration.create({
       eventId,
       teamId,
-      message,
-      status: 'PENDING'
+      message: message ?? null,
+      status: 'PENDING',
     });
 
-    // Get populated data for response
-    const owner = await User.findById(team.ownerId);
-    const ownerProfile = await Profile.findOne({ userId: team.ownerId });
-    const members = await TeamMember.find({ teamId, isActive: true });
-    const membersWithDetails = await Promise.all(
-      members.map(async (member) => {
-        const user = await User.findById(member.userId);
-        const profile = await Profile.findOne({ userId: member.userId });
-        return {
-          ...member.toObject(),
-          user: {
-            ...user?.toObject(),
-            profile
-          }
-        };
-      })
-    );
+    const teamDetails = await buildTeamResponse(team.toObject());
 
     const registrationWithDetails = {
-      ...registration.toObject(),
-      id: registration._id.toString(),
-      team: {
-        ...team.toObject(),
-        id: team._id.toString(),
-        owner: {
-          ...owner?.toObject(),
-          id: owner?._id.toString(),
-          profile: ownerProfile
-        },
-        members: membersWithDetails
-      },
+      id: toSanitizedId(registration._id),
+      eventId,
+      teamId,
+      message: registration.message ?? null,
+      status: registration.status ?? 'PENDING',
+      createdAt: toIsoString(registration.createdAt),
+      updatedAt: toIsoString(registration.updatedAt),
+      team: teamDetails,
       event: {
         ...event.toObject(),
-        id: event._id.toString()
-      }
+        id: event.id,
+      },
     };
 
     return NextResponse.json({
       success: true,
-      registration: registrationWithDetails
+      registration: registrationWithDetails,
     });
-
   } catch (error) {
     console.error('Team registration error:', error);
-    
-    let errorMessage = 'Failed to register team for event';
-    if (error instanceof Error) {
-      errorMessage = error.message;
-    }
-    
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: 500 }
-    );
+
+    const message = error instanceof Error ? error.message : 'Failed to register team for event';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<Record<string, string | string[] | undefined>> },
 ) {
   try {
-    const teamId = params.id;
-    
-    // Check authentication
-    const authResponse = await fetch(`${request.nextUrl.origin}/api/auth/check`, {
-      headers: {
-        cookie: request.headers.get('cookie') || '',
-      },
-    });
-
-    if (!authResponse.ok) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      );
+    const params = await context.params;
+    const rawId = params.id;
+    const teamId = Array.isArray(rawId) ? rawId[0] : rawId;
+    if (!teamId) {
+      return NextResponse.json({ error: 'Team ID is required' }, { status: 400 });
     }
 
-    const authData = await authResponse.json();
-    
-    if (!authData.authenticated || !authData.user) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      );
+    const authResult = await getAuthenticatedUserId(request);
+    if (!authResult.ok) {
+      return authResult.response;
     }
 
-    const userId = authData.user.id;
-    const { eventId } = await request.json();
+    const { userId } = authResult;
+    const body = (await request.json()) as CancelPayload;
+    const eventId = typeof body.eventId === 'string' ? body.eventId.trim() : '';
+
+    if (!eventId) {
+      return NextResponse.json({ error: 'Event ID is required' }, { status: 400 });
+    }
 
     await connectDB();
-    
-    // Check if team exists and user is the owner
-    const team = await Team.findById(teamId);
 
+    const team = await Team.findById(teamId);
     if (!team) {
-      return NextResponse.json(
-        { error: 'Team not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    // Check if user is team owner or member
     const isOwner = team.ownerId === userId;
     const isMember = await TeamMember.findOne({ teamId, userId, isActive: true });
-
     if (!isOwner && !isMember) {
       return NextResponse.json(
         { error: 'You must be a team owner or member to cancel registration' },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
-    // Find and delete registration
-    const registration = await EventRegistration.findOne({
-      eventId,
-      teamId
-    });
-
+    const registration = await EventRegistration.findOne({ eventId, teamId });
     if (!registration) {
-      return NextResponse.json(
-        { error: 'Registration not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Registration not found' }, { status: 404 });
     }
 
     await EventRegistration.findByIdAndDelete(registration._id);
 
     return NextResponse.json({
       success: true,
-      message: 'Team registration cancelled successfully'
+      message: 'Team registration cancelled successfully',
     });
-
   } catch (error) {
     console.error('Team registration cancellation error:', error);
-    return NextResponse.json(
-      { error: 'Failed to cancel team registration' },
-      { status: 500 }
-    );
+    const message =
+      error instanceof Error ? error.message : 'Failed to cancel team registration';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+async function getAuthenticatedUserId(
+  request: NextRequest,
+): Promise<{ ok: true; userId: string } | { ok: false; response: NextResponse }> {
+  const authResponse = await fetch(`${request.nextUrl.origin}/api/auth/check`, {
+    headers: {
+      cookie: request.headers.get('cookie') || '',
+    },
+  });
+
+  if (!authResponse.ok) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: 'Authentication required' }, { status: 401 }),
+    };
+  }
+
+  const authData = (await authResponse.json()) as AuthCheckResponse;
+  if (!authData.authenticated || !authData.user?.id) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: 'Authentication required' }, { status: 401 }),
+    };
+  }
+
+  return { ok: true, userId: authData.user.id };
 }

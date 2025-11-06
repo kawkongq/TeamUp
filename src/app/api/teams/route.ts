@@ -1,15 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Team from '@/models/Team';
-import User from '@/models/User';
-import Profile from '@/models/Profile';
 import Event from '@/models/Event';
 import TeamMember from '@/models/TeamMember';
+import User from '@/models/User';
+import { buildTeamResponse, toSanitizedId } from '@/lib/team-response';
+import { createTeamRecord } from '@/services/team-service';
 
-export async function GET(request: NextRequest) {
+interface CreateTeamPayload {
+  name: string;
+  description: string;
+  ownerId: string;
+  eventId: string;
+  maxMembers: number;
+  tags: string;
+  lookingFor: string;
+}
+
+export async function GET(_request: NextRequest) {
   try {
-    console.log('[Teams API] GET request received');
-    
     await connectDB();
     
     const teams = await Team.find({ isActive: true })
@@ -17,47 +26,9 @@ export async function GET(request: NextRequest) {
       .lean();
 
     const teamsWithDetails = await Promise.all(
-      teams.map(async (team) => {
-        const owner = await User.findById(team.ownerId).lean();
-        const ownerProfile = owner ? await Profile.findOne({ userId: owner._id.toString() }).lean() : null;
-        const event = await Event.findById(team.eventId).lean();
-        
-        const members = await TeamMember.find({ teamId: team._id.toString(), isActive: true }).lean();
-        const membersWithDetails = await Promise.all(
-          members.map(async (member) => {
-            const user = await User.findById(member.userId).lean();
-            const profile = user ? await Profile.findOne({ userId: user._id.toString() }).lean() : null;
-            return {
-              ...member,
-              id: member._id.toString(),
-              user: {
-                ...user,
-                id: user?._id.toString(),
-                profile
-              }
-            };
-          })
-        );
-
-        return {
-          ...team,
-          id: team._id.toString(),
-          owner: {
-            ...owner,
-            id: owner?._id.toString(),
-            profile: ownerProfile
-          },
-          event: {
-            ...event,
-            id: event?._id.toString()
-          },
-          members: membersWithDetails
-        };
-      })
+      teams.map((team) => buildTeamResponse(team))
     );
 
-    console.log(`[Teams API] Successfully fetched ${teamsWithDetails.length} teams`);
-    
     return NextResponse.json({
       success: true,
       teams: teamsWithDetails
@@ -73,8 +44,6 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('[Teams API] POST request received');
-    
     // Check authentication first
     const authResponse = await fetch(`${request.nextUrl.origin}/api/auth/check`, {
       headers: {
@@ -83,7 +52,6 @@ export async function POST(request: NextRequest) {
     });
 
     if (!authResponse.ok) {
-      console.log('[Teams API] Authentication failed');
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 }
@@ -93,128 +61,39 @@ export async function POST(request: NextRequest) {
     const authData = await authResponse.json();
     
     if (!authData.authenticated || !authData.user) {
-      console.log('[Teams API] User not authenticated');
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 }
       );
     }
 
-    // All authenticated users can create teams
-    console.log(`[Teams API] User ${authData.user.id} (${authData.user.role}) creating team`);
-
     const body = await request.json();
-    console.log('[Teams API] Request body:', body);
-    
-    const { 
-      name, 
-      description, 
-      maxMembers, 
-      ownerId, 
-      eventId,
-      tags, 
-      lookingFor 
-    } = body;
 
-    // Validate required fields
-    if (!name) {
-      console.log('[Teams API] Missing name field');
+    const validation = parseCreateTeamPayload(body);
+    if (!validation.ok) {
       return NextResponse.json(
-        { error: 'Missing required field: name' },
+        { error: validation.error },
         { status: 400 }
       );
     }
 
-    if (!ownerId) {
-      console.log('[Teams API] Missing ownerId field');
-      return NextResponse.json(
-        { error: 'Missing required field: ownerId' },
-        { status: 400 }
-      );
-    }
+    const payload = validation.data;
 
-    if (!eventId) {
-      console.log('[Teams API] Missing eventId field');
+    if (payload.ownerId !== authData.user.id) {
       return NextResponse.json(
-        { error: 'Missing required field: eventId' },
-        { status: 400 }
+        { error: 'You can only create teams for your own account' },
+        { status: 403 }
       );
     }
 
     await connectDB();
-    
-    // Validate that the user exists
-    const user = await User.findById(ownerId);
 
-    if (!user) {
-      console.log(`[Teams API] User not found: ${ownerId}`);
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
-      );
-    }
-
-    // Validate that the event exists
-    const event = await Event.findById(eventId);
-
-    if (!event) {
-      console.log(`[Teams API] Event not found: ${eventId}`);
-      return NextResponse.json(
-        { error: 'Event not found' },
-        { status: 404 }
-      );
-    }
-
-    console.log('[Teams API] Creating team with data:', {
-      name,
-      description,
-      maxMembers,
-      ownerId,
-      eventId,
-      tags,
-      lookingFor
+    const teamWithDetails = await createTeamRecord(payload, {
+      userModel: User,
+      eventModel: Event,
+      teamModel: Team,
+      teamMemberModel: TeamMember,
     });
-
-    // Create the team
-    const team = await Team.create({
-      name,
-      description,
-      maxMembers: maxMembers || 10,
-      ownerId,
-      eventId,
-      tags: tags || '',
-      lookingFor: lookingFor || '',
-      isActive: true
-    });
-
-    // Add owner as team member with "owner" role
-    await TeamMember.create({
-      teamId: team._id.toString(),
-      userId: ownerId,
-      role: 'owner',
-      isActive: true
-    });
-
-    // Get populated team data
-    const owner = await User.findById(ownerId);
-    const ownerProfile = await Profile.findOne({ userId: ownerId });
-    const eventData = await Event.findById(eventId);
-
-    const teamWithDetails = {
-      ...team.toObject(),
-      id: team._id.toString(),
-      owner: {
-        ...owner?.toObject(),
-        id: owner?._id.toString(),
-        profile: ownerProfile
-      },
-      event: {
-        ...eventData?.toObject(),
-        id: eventData?._id.toString()
-      }
-    };
-
-    console.log('[Teams API] Team created successfully:', team._id.toString());
 
     return NextResponse.json({
       success: true,
@@ -225,11 +104,20 @@ export async function POST(request: NextRequest) {
     
     // Provide more specific error messages
     let errorMessage = 'Failed to create team';
+    let status = 500;
     if (error instanceof Error) {
       if (error.message.includes('Unique constraint')) {
         errorMessage = 'A team with this name already exists';
+        status = 409;
       } else if (error.message.includes('Foreign key constraint')) {
         errorMessage = 'Invalid user or event reference';
+        status = 400;
+      } else if (error.message.includes('owner')) {
+        errorMessage = error.message;
+        status = 404;
+      } else if (error.message.includes('Event not found')) {
+        errorMessage = error.message;
+        status = 404;
       } else {
         errorMessage = error.message;
       }
@@ -237,7 +125,68 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json(
       { error: errorMessage },
-      { status: 500 }
+      { status }
     );
   }
+}
+
+function parseCreateTeamPayload(input: unknown):
+  | { ok: true; data: CreateTeamPayload }
+  | { ok: false; error: string } {
+  if (!input || typeof input !== 'object') {
+    return { ok: false, error: 'Invalid payload' };
+  }
+
+  const payload = input as Record<string, unknown>;
+
+  const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+  const description = typeof payload.description === 'string' ? payload.description.trim() : '';
+  const ownerId = toSanitizedId(payload.ownerId);
+  const eventId = toSanitizedId(payload.eventId);
+  const tags = typeof payload.tags === 'string' ? payload.tags.trim() : '';
+  const lookingFor = typeof payload.lookingFor === 'string' ? payload.lookingFor.trim() : '';
+
+  if (!name) {
+    return { ok: false, error: 'Team name is required' };
+  }
+
+  if (!description) {
+    return { ok: false, error: 'Team description is required' };
+  }
+
+  if (!ownerId) {
+    return { ok: false, error: 'Team owner is required' };
+  }
+
+  if (!eventId) {
+    return { ok: false, error: 'Event is required' };
+  }
+
+  const maxMembersRaw = payload.maxMembers;
+  let maxMembers = 10;
+  if (typeof maxMembersRaw === 'number') {
+    maxMembers = maxMembersRaw;
+  } else if (typeof maxMembersRaw === 'string' && maxMembersRaw.trim().length > 0) {
+    const parsed = Number(maxMembersRaw);
+    if (!Number.isNaN(parsed)) {
+      maxMembers = parsed;
+    }
+  }
+
+  if (!Number.isInteger(maxMembers) || maxMembers < 1 || maxMembers > 20) {
+    return { ok: false, error: 'Max members must be an integer between 1 and 20' };
+  }
+
+  return {
+    ok: true,
+    data: {
+      name,
+      description,
+      ownerId,
+      eventId,
+      maxMembers,
+      tags,
+      lookingFor,
+    },
+  };
 }

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
@@ -8,9 +9,9 @@ import mongoose from 'mongoose';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: any,
 ) {
-  const userId = params.id;
+  const userId = context.params.id;
   try {
     await connectDB();
 
@@ -71,7 +72,7 @@ export async function POST(
           await Team.findByIdAndDelete(team._id);
         }
         await Profile.deleteOne({ userId });
-        const result = await User.findByIdAndUpdate(
+        await User.findByIdAndUpdate(
           userId,
           {
             name: `[DELETED] ${new Date().toISOString()}`,

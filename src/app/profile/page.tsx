@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import ImageUpload from '../components/ImageUpload';
 import { useNotification } from '../contexts/NotificationContext';
 import Dropdown from '../components/Dropdown';
+import { debugLog } from '@/lib/logger';
 
 interface Skill {
   id: number;
@@ -300,7 +301,7 @@ export default function ProfilePage() {
           interests: selectedInterests
         };
 
-        console.log('Updating profile with avatar:', profileUpdateData);
+        debugLog('Updating profile with avatar:', profileUpdateData);
 
         const updateResponse = await fetch('/api/profile', {
           method: 'PUT',

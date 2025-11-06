@@ -1,10 +1,10 @@
+// @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Team from '@/models/Team';
-import User from '@/models/User';
 import TeamMember from '@/models/TeamMember';
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     await connectDB();
     

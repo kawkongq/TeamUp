@@ -11,7 +11,7 @@ interface EventImageUploadProps {
 function EventImageUpload({ currentImage, onImageUpload, className = "" }: EventImageUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [imageMode, setImageMode] = useState<'contain' | 'cover'>('contain');
+  const imageMode: 'contain' | 'cover' = 'contain';
 
   const handleFileUpload = useCallback(async (file: File) => {
     if (!file) return;

@@ -27,7 +27,6 @@ const InterestSchema = new Schema<IInterest>({
 });
 
 // Indexes
-InterestSchema.index({ name: 1 });
 InterestSchema.index({ category: 1 });
 
 export default mongoose.models.Interest || mongoose.model<IInterest>('Interest', InterestSchema);

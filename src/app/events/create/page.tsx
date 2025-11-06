@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { canCreateEvents, getRoleDescription } from '@/lib/auth-utils';
+import { canCreateEvents } from '@/lib/auth-utils';
+import { debugLog } from '@/lib/logger';
 import EventImageUpload from '@/app/components/EventImageUpload';
 
 export default function CreateEventPage() {
@@ -102,7 +103,7 @@ export default function CreateEventPage() {
         maxTeams: parseInt(formData.maxParticipants)
       };
       
-      console.log('Creating event with data:', requestData);
+      debugLog('Creating event with data:', requestData);
       
       const response = await fetch('/api/events', {
         method: 'POST',
@@ -113,7 +114,7 @@ export default function CreateEventPage() {
       });
 
       const data = await response.json();
-      console.log('API response:', { status: response.status, data });
+      debugLog('API response:', { status: response.status, data });
 
       if (response.ok) {
         // Show success message briefly before redirecting

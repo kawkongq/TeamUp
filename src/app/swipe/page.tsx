@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import SwipeCard from '../components/SwipeCard';
 import MatchModal from '../components/MatchModal';
 
@@ -25,11 +24,6 @@ interface Person {
   timezone?: string | null;
   createdAt: string;
   updatedAt: string;
-}
-
-interface Match {
-  id: string;
-  user: Person;
 }
 
 export default function SwipePage() {
@@ -139,7 +133,6 @@ export default function SwipePage() {
   const handleUndo = () => {
     if (swipeHistory.length === 0 || currentIndex === 0) return;
     
-    const lastSwipe = swipeHistory[swipeHistory.length - 1];
     setSwipeHistory(prev => prev.slice(0, -1));
     setCurrentIndex(prev => prev - 1);
   };
@@ -255,7 +248,6 @@ export default function SwipePage() {
     );
   }
 
-  const currentPerson = people[currentIndex];
   const progress = ((currentIndex + 1) / people.length) * 100;
 
   return (

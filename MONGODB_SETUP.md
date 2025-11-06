@@ -28,7 +28,7 @@ Create `.env.local` file in the project root:
 
 ```env
 # MongoDB Configuration
-MONGODB_URI=mongodb://localhost:27017/hackmatch
+MONGODB_URI=mongodb://localhost:27017/teamup
 
 # NextAuth Configuration
 NEXTAUTH_URL=http://localhost:3000
@@ -105,4 +105,3 @@ hackmatch/
 ### Data Issues:
 - Clear database: `mongosh hackmatch --eval "db.dropDatabase()"`
 - Re-seed data: `npm run db:seed-mongodb`
-

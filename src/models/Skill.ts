@@ -27,7 +27,6 @@ const SkillSchema = new Schema<ISkill>({
 });
 
 // Indexes
-SkillSchema.index({ name: 1 });
 SkillSchema.index({ category: 1 });
 
 export default mongoose.models.Skill || mongoose.model<ISkill>('Skill', SkillSchema);

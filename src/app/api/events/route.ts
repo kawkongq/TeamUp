@@ -1,80 +1,110 @@
 import { NextRequest, NextResponse } from 'next/server';
+
 import connectDB from '@/lib/mongodb';
 import Event from '@/models/Event';
 import Team from '@/models/Team';
-import User from '@/models/User';
-import Profile from '@/models/Profile';
-import TeamMember from '@/models/TeamMember';
+import {
+  SanitizedTeam,
+  buildTeamResponse,
+  toIsoString,
+  toSanitizedId,
+} from '@/lib/team-response';
 
-export async function GET(request: NextRequest) {
+type AuthCheckResponse = {
+  authenticated: boolean;
+  user?: {
+    id: string;
+    role?: string;
+  } | null;
+};
+
+type CreateEventPayload = {
+  name?: unknown;
+  description?: unknown;
+  startDate?: unknown;
+  endDate?: unknown;
+  location?: unknown;
+  imageUrl?: unknown;
+  type?: unknown;
+  category?: unknown;
+  tags?: unknown;
+  maxTeams?: unknown;
+};
+
+type ParsedEventPayload = {
+  name: string;
+  description: string;
+  startDate: Date;
+  endDate: Date;
+  location: string | null;
+  imageUrl: string | null;
+  type: string;
+  category: string | null;
+  tags: string | null;
+  maxTeams: number | null;
+};
+
+type SanitizedEvent = {
+  id: string;
+  name: string;
+  description: string;
+  startDate: string;
+  endDate: string;
+  location: string | null;
+  imageUrl: string | null;
+  type: string;
+  category: string | null;
+  tags: string | null;
+  maxTeams: number | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  teams: SanitizedTeam[];
+};
+
+export async function GET(_request: NextRequest) {
   try {
     await connectDB();
-    
-    const events = await Event.find({ isActive: true })
-      .sort({ startDate: 1 })
-      .lean();
 
-    // Get teams for each event with populated data
-    const eventsWithTeams = await Promise.all(
-      events.map(async (event) => {
-        const teams = await Team.find({ eventId: event._id.toString() })
-          .lean();
+    const events = await Event.find({ isActive: true }).sort({ startDate: 1 }).exec();
 
+    const eventsWithTeams: SanitizedEvent[] = await Promise.all(
+      events.map(async (eventDoc) => {
+        const teams = await Team.find({ eventId: eventDoc.id }).lean();
         const teamsWithDetails = await Promise.all(
-          teams.map(async (team) => {
-            const owner = await User.findById(team.ownerId).lean();
-            const ownerProfile = owner ? await Profile.findOne({ userId: owner._id.toString() }).lean() : null;
-            
-            const members = await TeamMember.find({ teamId: team._id.toString(), isActive: true }).lean();
-            const membersWithDetails = await Promise.all(
-              members.map(async (member) => {
-                const user = await User.findById(member.userId).lean();
-                const profile = user ? await Profile.findOne({ userId: user._id.toString() }).lean() : null;
-                return {
-                  ...member,
-                  user: {
-                    ...user,
-                    profile
-                  }
-                };
-              })
-            );
-
-            return {
-              ...team,
-              owner: {
-                ...owner,
-                profile: ownerProfile
-              },
-              members: membersWithDetails
-            };
-          })
+          (teams ?? []).map(async (team) => buildTeamResponse(team)),
         );
 
         return {
-          ...event,
-          id: event._id.toString(),
-          teams: teamsWithDetails
+          id: eventDoc.id,
+          name: eventDoc.name,
+          description: eventDoc.description ?? '',
+          startDate: toIsoString(eventDoc.startDate),
+          endDate: toIsoString(eventDoc.endDate),
+          location: eventDoc.location ?? null,
+          imageUrl: eventDoc.imageUrl ?? null,
+          type: eventDoc.type,
+          category: eventDoc.category ?? null,
+          tags: eventDoc.tags ?? null,
+          maxTeams: typeof eventDoc.maxTeams === 'number' ? eventDoc.maxTeams : null,
+          isActive: eventDoc.isActive,
+          createdAt: toIsoString(eventDoc.createdAt),
+          updatedAt: toIsoString(eventDoc.updatedAt),
+          teams: teamsWithDetails,
         };
-      })
+      }),
     );
 
-    return NextResponse.json({
-      success: true,
-      events: eventsWithTeams
-    });
+    return NextResponse.json({ success: true, events: eventsWithTeams });
   } catch (error) {
     console.error('Events GET Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch events' },
-      { status: 500 }
-    );
+    const message = error instanceof Error ? error.message : 'Failed to fetch events';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    // Check authentication first
     const authResponse = await fetch(`${request.nextUrl.origin}/api/auth/check`, {
       headers: {
         cookie: request.headers.get('cookie') || '',
@@ -82,90 +112,65 @@ export async function POST(request: NextRequest) {
     });
 
     if (!authResponse.ok) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    const authData = await authResponse.json();
-    
-    if (!authData.authenticated || !authData.user) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      );
+    const authData = (await authResponse.json()) as AuthCheckResponse;
+    const role = authData.user?.role;
+
+    if (!authData.authenticated || !role) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    // Check if user has permission to create events
-    const userRole = authData.user.role;
-    if (userRole !== 'organizer' && userRole !== 'admin') {
+    if (role !== 'organizer' && role !== 'admin') {
       return NextResponse.json(
         { error: 'Access denied. Only organizers and admins can create events.' },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
-    const body = await request.json();
-    const { 
-      name, 
-      description, 
-      startDate, 
-      endDate, 
-      location, 
-      imageUrl,
-      type,
-      category,
-      tags,
-      maxTeams
-    } = body;
+    const body = (await request.json()) as CreateEventPayload;
+    const parsed = parseCreateEventPayload(body);
 
-    if (!name || !startDate || !endDate) {
-      return NextResponse.json(
-        { error: 'Missing required fields: name, startDate, endDate' },
-        { status: 400 }
-      );
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
-
-    const eventData: any = {
-      name,
-      description,
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
-      location,
-      imageUrl,
-      type,
-      category,
-      tags,
-      maxTeams,
-      isActive: true
-    };
 
     await connectDB();
-    
-    const event = await Event.create(eventData);
+
+    const event = await Event.create({
+      name: parsed.data.name,
+      description: parsed.data.description,
+      startDate: parsed.data.startDate,
+      endDate: parsed.data.endDate,
+      location: parsed.data.location,
+      imageUrl: parsed.data.imageUrl,
+      type: parsed.data.type,
+      category: parsed.data.category,
+      tags: parsed.data.tags,
+      maxTeams: parsed.data.maxTeams,
+      isActive: true,
+    });
+
     return NextResponse.json({
       success: true,
       event: {
-        id: event._id.toString(),
+        id: toSanitizedId(event._id),
         name: event.name,
-        description: event.description,
+        description: event.description ?? '',
         startDate: event.startDate,
         endDate: event.endDate,
-        location: event.location,
-        imageUrl: event.imageUrl,
+        location: event.location ?? null,
+        imageUrl: event.imageUrl ?? null,
         type: event.type,
-        category: event.category,
-        tags: event.tags,
-        maxTeams: event.maxTeams,
-        isActive: event.isActive
-      }
+        category: event.category ?? null,
+        tags: event.tags ?? null,
+        maxTeams: typeof event.maxTeams === 'number' ? event.maxTeams : null,
+        isActive: event.isActive,
+      },
     });
-
   } catch (error) {
     console.error('Events POST Error:', error);
-    
-    // Provide more specific error messages
     let errorMessage = 'Failed to create event';
     if (error instanceof Error) {
       if (error.message.includes('Unique constraint')) {
@@ -176,10 +181,76 @@ export async function POST(request: NextRequest) {
         errorMessage = error.message;
       }
     }
-    
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: 500 }
-    );
+
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
+}
+
+function parseCreateEventPayload(
+  input: CreateEventPayload,
+):
+  | { ok: true; data: ParsedEventPayload }
+  | { ok: false; error: string } {
+  const name = typeof input.name === 'string' ? input.name.trim() : '';
+  const description = typeof input.description === 'string' ? input.description.trim() : '';
+  const type = typeof input.type === 'string' ? input.type.trim() : '';
+
+  if (!name) {
+    return { ok: false, error: 'Event name is required' };
+  }
+
+  if (!type) {
+    return { ok: false, error: 'Event type is required' };
+  }
+
+  const startDateRaw = typeof input.startDate === 'string' ? input.startDate : '';
+  const endDateRaw = typeof input.endDate === 'string' ? input.endDate : '';
+
+  const startDate = new Date(startDateRaw);
+  const endDate = new Date(endDateRaw);
+
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return { ok: false, error: 'Invalid start or end date' };
+  }
+
+  const location =
+    typeof input.location === 'string' && input.location.trim().length > 0
+      ? input.location.trim()
+      : null;
+  const imageUrl =
+    typeof input.imageUrl === 'string' && input.imageUrl.trim().length > 0
+      ? input.imageUrl.trim()
+      : null;
+  const category =
+    typeof input.category === 'string' && input.category.trim().length > 0
+      ? input.category.trim()
+      : null;
+  const tags =
+    typeof input.tags === 'string' && input.tags.trim().length > 0
+      ? input.tags.trim()
+      : null;
+
+  let maxTeams: number | null = null;
+  if (typeof input.maxTeams === 'number') {
+    maxTeams = Number.isFinite(input.maxTeams) ? input.maxTeams : null;
+  } else if (typeof input.maxTeams === 'string' && input.maxTeams.trim().length > 0) {
+    const parsed = Number(input.maxTeams);
+    maxTeams = Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return {
+    ok: true,
+    data: {
+      name,
+      description,
+      startDate,
+      endDate,
+      location,
+      imageUrl,
+      type,
+      category,
+      tags,
+      maxTeams,
+    },
+  };
 }

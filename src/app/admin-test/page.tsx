@@ -1,10 +1,24 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { debugLog } from '@/lib/logger';
+
+interface AdminStats {
+  totalUsers: number;
+  activeUsers: number;
+  totalTeams: number;
+  totalEvents: number;
+}
+
+interface AdminUserSummary {
+  id: string;
+  name: string;
+  email: string;
+}
 
 export default function AdminTestPage() {
-  const [users, setUsers] = useState([]);
-  const [stats, setStats] = useState(null);
+  const [users, setUsers] = useState<AdminUserSummary[]>([]);
+  const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -17,15 +31,15 @@ export default function AdminTestPage() {
       setLoading(true);
       setError('');
 
-      console.log('Testing APIs...');
+      debugLog('Testing APIs...');
 
       // Test users API
       const usersResponse = await fetch('/api/admin/users');
-      console.log('Users response:', usersResponse.status, usersResponse.ok);
+      debugLog('Users response:', usersResponse.status, usersResponse.ok);
       
       if (usersResponse.ok) {
         const usersData = await usersResponse.json();
-        console.log('Users data:', usersData);
+        debugLog('Users data:', usersData);
         setUsers(usersData.users || []);
       } else {
         const errorText = await usersResponse.text();
@@ -35,12 +49,12 @@ export default function AdminTestPage() {
 
       // Test stats API
       const statsResponse = await fetch('/api/admin/stats');
-      console.log('Stats response:', statsResponse.status, statsResponse.ok);
+      debugLog('Stats response:', statsResponse.status, statsResponse.ok);
       
       if (statsResponse.ok) {
         const statsData = await statsResponse.json();
-        console.log('Stats data:', statsData);
-        setStats(statsData.stats);
+        debugLog('Stats data:', statsData);
+        setStats(statsData.stats as AdminStats);
       } else {
         const errorText = await statsResponse.text();
         console.error('Stats error:', errorText);
@@ -48,7 +62,8 @@ export default function AdminTestPage() {
 
     } catch (error) {
       console.error('Load error:', error);
-      setError(`Error: ${error.message}`);
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      setError(`Error: ${message}`);
     } finally {
       setLoading(false);
     }
@@ -104,7 +119,7 @@ export default function AdminTestPage() {
             <h2 className="text-xl font-semibold mb-4">Users ({users.length})</h2>
             {users.length > 0 ? (
               <div className="space-y-2 max-h-64 overflow-y-auto">
-                {users.map((user: any) => (
+                {users.map((user) => (
                   <div key={user.id} className="p-2 bg-gray-50 rounded">
                     <p className="font-medium">{user.name}</p>
                     <p className="text-sm text-gray-600">{user.email}</p>

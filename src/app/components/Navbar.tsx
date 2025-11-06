@@ -3,29 +3,46 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { debugLog } from '@/lib/logger';
 
 export default function Navbar() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   const [userRole, setUserRole] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [invitationCount, setInvitationCount] = useState(0);
   const [scrolled, setScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const router = useRouter();
 
+  const resetUserState = () => {
+    setIsLoggedIn(false);
+    setUserEmail("");
+    setUserProfile(null);
+    setUserRole(null);
+    setInvitationCount(0);
+    localStorage.removeItem('userEmail');
+    localStorage.removeItem('userRole');
+    localStorage.removeItem('userId');
+  };
+
+  const applyUserState = (data: {
+    id: string;
+    email?: string;
+    role?: string;
+    profile?: unknown;
+  }) => {
+    setIsLoggedIn(true);
+    setUserEmail(data.email || "");
+    setUserRole(data.role || null);
+    setUserProfile(data.profile ?? null);
+    localStorage.setItem('userEmail', data.email || '');
+    localStorage.setItem('userRole', data.role || '');
+    localStorage.setItem('userId', data.id);
+  };
+
   const checkAuthStatus = async (retryCount = 0) => {
     try {
-      // Check if user has logged out
-      if (document.cookie.includes('logged_out=true')) {
-        setIsLoggedIn(false);
-        setUserEmail("");
-        setUserProfile(null);
-        setUserRole(null);
-        return;
-      }
-
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
         controller.abort();
@@ -46,45 +63,50 @@ export default function Navbar() {
 
         if (response.ok) {
           const data = await response.json();
-          console.log('Auth check response:', data);
+          debugLog('Auth check response:', data);
 
           if (data.authenticated && data.user?.id) {
-            // Check if user is deleted
             if (data.user.name?.startsWith('[DELETED]')) {
-              console.log('Detected deleted user, logging out...');
+              debugLog('Detected deleted user, logging out...');
               handleSignOut();
               return;
             }
             
-            setIsLoggedIn(true);
-            setUserEmail(data.user.email || "");
-            setUserRole(data.user.role || null);
-            setCurrentUserId(data.user.id);
+            const userId = data.user.id;
+            let profileData: any = data.user.profile ?? null;
 
-            // Fetch user profile only if we have a user ID
-            try {
-              const profileResponse = await fetch(`/api/profile?userId=${data.user.id}`, {
-                method: 'GET',
-                credentials: 'include',
-                headers: {
-                  'Accept': 'application/json',
-                  'Content-Type': 'application/json'
+            if (!profileData) {
+              try {
+                const profileResponse = await fetch(`/api/profile?userId=${userId}`, {
+                  method: 'GET',
+                  credentials: 'include',
+                  headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                  }
+                });
+
+                if (profileResponse.ok) {
+                  const profileJson = await profileResponse.json();
+                  profileData = profileJson.profile ?? null;
+                } else {
+                  console.warn(`Profile fetch failed with status: ${profileResponse.status}`);
                 }
-              });
-
-              if (profileResponse.ok) {
-                const profileData = await profileResponse.json();
-                setUserProfile(profileData.profile);
-              } else {
-                console.warn(`Profile fetch failed with status: ${profileResponse.status}`);
+              } catch (profileError) {
+                console.error('Profile fetch error:', profileError);
               }
-            } catch (profileError) {
-              console.error('Profile fetch error:', profileError);
             }
+
+            applyUserState({
+              id: userId,
+              email: data.user.email,
+              role: data.user.role,
+              profile: profileData,
+            });
 
             // Fetch invitation count
             try {
-              const invitationResponse = await fetch(`/api/invitations?userId=${data.user.id}`, {
+              const invitationResponse = await fetch(`/api/invitations?userId=${userId}`, {
                 method: 'GET',
                 credentials: 'include',
                 headers: {
@@ -101,33 +123,16 @@ export default function Navbar() {
               console.error('Invitation fetch error:', invitationError);
             }
           } else {
-            setIsLoggedIn(false);
-            setUserEmail("");
-            setUserProfile(null);
-            setUserRole(null);
+            resetUserState();
           }
         } else {
           console.warn(`Auth check failed with status: ${response.status}`);
-          // Fallback: check localStorage
-          const storedEmail = localStorage.getItem('userEmail');
-          if (storedEmail) {
-            setIsLoggedIn(true);
-            setUserEmail(storedEmail);
-          } else {
-            setIsLoggedIn(false);
-            setUserEmail("");
-            setUserProfile(null);
-            setUserRole(null);
-          }
+          resetUserState();
         }
       } catch (error: any) {
         if (error?.name === 'AbortError') {
-          console.log('Auth check request was aborted due to timeout');
-          setIsLoggedIn(false);
-          setUserEmail("");
-          setUserRole(null);
-          setCurrentUserId(null);
-          setUserProfile(null);
+          debugLog('Auth check request was aborted due to timeout');
+          resetUserState();
           return;
         }
 
@@ -135,32 +140,18 @@ export default function Navbar() {
 
         // Retry logic for network errors
         if (retryCount < 2 && (error instanceof TypeError || error?.name === 'AbortError')) {
-          console.log(`Retrying auth check in 1 second... (attempt ${retryCount + 1})`);
+          debugLog(`Retrying auth check in 1 second... (attempt ${retryCount + 1})`);
           setTimeout(() => checkAuthStatus(retryCount + 1), 1000);
           return;
         }
 
-        // Fallback: check localStorage
-        const storedEmail = localStorage.getItem('userEmail');
-        if (storedEmail) {
-          setIsLoggedIn(true);
-          setUserEmail(storedEmail);
-        } else {
-          setIsLoggedIn(false);
-          setUserEmail("");
-          setUserProfile(null);
-          setUserRole(null);
-        }
+        resetUserState();
       } finally {
         clearTimeout(timeoutId);
       }
     } catch (error: any) {
       console.error('Auth check error:', error);
-      setIsLoggedIn(false);
-      setUserEmail("");
-      setUserRole(null);
-      setCurrentUserId(null);
-      setUserProfile(null);
+      resetUserState();
     }
   };
 
@@ -196,34 +187,15 @@ export default function Navbar() {
       });
 
       if (response.ok) {
-        setIsLoggedIn(false);
-        setUserEmail("");
-        setUserRole(null);
-        setCurrentUserId(null);
-        setUserProfile(null);
-        setInvitationCount(0);
-        
-        // Clear localStorage
-        localStorage.removeItem('userEmail');
-        localStorage.removeItem('userRole');
-        localStorage.removeItem('userId');
-        
+        resetUserState();
+
         // Redirect to home page
         router.push('/');
       }
     } catch (error) {
       console.error('Sign out error:', error);
       // Force logout even if API call fails
-      setIsLoggedIn(false);
-      setUserEmail("");
-      setUserRole(null);
-      setCurrentUserId(null);
-      setUserProfile(null);
-      setInvitationCount(0);
-      
-      localStorage.removeItem('userEmail');
-      localStorage.removeItem('userRole');
-      localStorage.removeItem('userId');
+      resetUserState();
       
       router.push('/');
     }

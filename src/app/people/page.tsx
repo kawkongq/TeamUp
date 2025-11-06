@@ -8,6 +8,7 @@ import PersonProfileModal from '../components/PersonProfileModal';
 import InviteToTeamModal from '../components/InviteToTeamModal';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useToast } from '../components/Toast';
+import { debugLog } from '@/lib/logger';
 
 
 interface Person {
@@ -79,7 +80,7 @@ export default function PeoplePage() {
 
   const handleChatClick = async (personId: string) => {
     if (!currentUser) {
-      console.log('No current user, redirecting to signin');
+      debugLog('No current user, redirecting to signin');
       router.push('/signin');
       return;
     }
@@ -95,8 +96,8 @@ export default function PeoplePage() {
     }
 
     try {
-      console.log('Creating chat between:', { senderId: currentUser.id, receiverId: personId });
-      console.log('Current user object:', currentUser);
+      debugLog('Creating chat between:', { senderId: currentUser.id, receiverId: personId });
+      debugLog('Current user object:', currentUser);
       
       // Create or get existing chat
       const requestBody = {
@@ -104,8 +105,8 @@ export default function PeoplePage() {
         receiverId: personId
       };
       
-      console.log('Request body being sent:', requestBody);
-      console.log('Request URL:', '/api/chat');
+      debugLog('Request body being sent:', requestBody);
+      debugLog('Request URL:', '/api/chat');
       
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -115,12 +116,12 @@ export default function PeoplePage() {
         body: JSON.stringify(requestBody),
       });
 
-      console.log('Response status:', response.status);
-      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+      debugLog('Response status:', response.status);
+      debugLog('Response headers:', Object.fromEntries(response.headers.entries()));
 
       if (response.ok) {
         const data = await response.json();
-        console.log('Chat created successfully:', data);
+        debugLog('Chat created successfully:', data);
         // Store chat information in localStorage for the chat page to use
         localStorage.setItem('selectedChat', JSON.stringify(data.chat));
         // Navigate to chat page

@@ -69,7 +69,7 @@ export default function Dropdown({
               {options.map((option) => (
                 <Listbox.Option
                   key={option.value}
-                  className={({ active, selected }) =>
+                  className={({ active }) =>
                     `relative cursor-default select-none py-4 pl-12 pr-6 transition-colors duration-150 ${
                       active 
                         ? 'bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-900' 

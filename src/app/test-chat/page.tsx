@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import ChatInterface from '../../components/ChatInterface';
+import ChatInterface from '../components/ChatInterface';
 
 export default function TestChatPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);

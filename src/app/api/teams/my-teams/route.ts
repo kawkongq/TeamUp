@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Team from '@/models/Team';
-import User from '@/models/User';
-import Profile from '@/models/Profile';
-import Event from '@/models/Event';
 import TeamMember from '@/models/TeamMember';
+import { buildTeamResponse, toSanitizedId } from '@/lib/team-response';
+
+type AuthCheckResponse = {
+  authenticated: boolean;
+  user?: {
+    id: string;
+  } | null;
+};
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,9 +27,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const authData = await authResponse.json();
+    const authData = (await authResponse.json()) as AuthCheckResponse;
     
-    if (!authData.authenticated || !authData.user) {
+    if (!authData.authenticated || !authData.user?.id) {
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 }
@@ -53,48 +58,17 @@ export async function GET(request: NextRequest) {
     }).lean();
 
     // Combine and deduplicate teams
-    const allTeamIds = new Set();
-    const allTeams = [];
-    
-    [...ownedTeams, ...memberTeams].forEach(team => {
-      if (!allTeamIds.has(team._id.toString())) {
-        allTeamIds.add(team._id.toString());
-        allTeams.push(team);
+    const uniqueTeams = new Map<string, Record<string, unknown>>();
+    [...ownedTeams, ...memberTeams].forEach((team) => {
+      const id = toSanitizedId(team?._id);
+      if (id && !uniqueTeams.has(id)) {
+        uniqueTeams.set(id, team as Record<string, unknown>);
       }
     });
 
     // Get detailed information for each team
     const teamsWithDetails = await Promise.all(
-      allTeams.map(async (team) => {
-        const members = await TeamMember.find({ teamId: team._id.toString(), isActive: true });
-        const membersWithDetails = await Promise.all(
-          members.map(async (member) => {
-            const user = await User.findById(member.userId);
-            const profile = user ? await Profile.findOne({ userId: user._id.toString() }) : null;
-            return {
-              ...member.toObject(),
-              id: member._id.toString(),
-              user: {
-                ...user?.toObject(),
-                id: user?._id.toString(),
-                profile
-              }
-            };
-          })
-        );
-
-        const event = await Event.findById(team.eventId);
-
-        return {
-          ...team,
-          id: team._id.toString(),
-          members: membersWithDetails,
-          event: {
-            ...event?.toObject(),
-            id: event?._id.toString()
-          }
-        };
-      })
+      Array.from(uniqueTeams.values()).map(async (team) => buildTeamResponse(team))
     );
 
     return NextResponse.json({

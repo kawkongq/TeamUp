@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
-import Image from 'next/image';
+import { useState, useEffect, useCallback } from 'react';
 import ChatList from './ChatList';
 import ChatConversation from './ChatConversation';
 import UserSearch from './UserSearch';
@@ -18,18 +17,7 @@ export default function ChatInterface({ currentUserId, initialSelectedChat }: Ch
   const [error, setError] = useState('');
   const [showUserSearch, setShowUserSearch] = useState(false);
 
-  useEffect(() => {
-    fetchChats();
-  }, [currentUserId]);
-
-  // Set initial selected chat when it's provided
-  useEffect(() => {
-    if (initialSelectedChat) {
-      setSelectedChat(initialSelectedChat);
-    }
-  }, [initialSelectedChat]);
-
-  const fetchChats = async () => {
+  const fetchChats = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/chat?userId=${currentUserId}`);
@@ -47,7 +35,18 @@ export default function ChatInterface({ currentUserId, initialSelectedChat }: Ch
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentUserId]);
+
+  useEffect(() => {
+    void fetchChats();
+  }, [fetchChats]);
+
+  // Set initial selected chat when it's provided
+  useEffect(() => {
+    if (initialSelectedChat) {
+      setSelectedChat(initialSelectedChat);
+    }
+  }, [initialSelectedChat]);
 
   const handleChatSelect = (chat: any) => {
     setSelectedChat(chat);

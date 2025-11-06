@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import ImageUpload from "../components/ImageUpload";
+import { debugLog } from "@/lib/logger";
 
 interface Profile {
   id: string;
@@ -55,11 +56,11 @@ export default function ProfileForm() {
       
       if (response.ok) {
         const data = await response.json();
-        console.log('Profile data received:', data);
+        debugLog('Profile data received:', data);
         
         // Extract profile data from the nested structure
         const profileData = data.profile || data;
-        console.log('Extracted profile data:', profileData);
+        debugLog('Extracted profile data:', profileData);
         
         setProfile(profileData);
         setFormData({
@@ -234,12 +235,12 @@ export default function ProfileForm() {
                 <ImageUpload 
                   currentImage={profile?.avatar}
                   onImageUpload={async (imageUrl) => {
-                    console.log('Image uploaded callback triggered with URL:', imageUrl);
-                    console.log('Current profile state before update:', profile);
+                    debugLog('Image uploaded callback triggered with URL:', imageUrl);
+                    debugLog('Current profile state before update:', profile);
                     
                     // Update the profile state immediately
                     const newProfile = profile ? { ...profile, avatar: imageUrl } : null;
-                    console.log('New profile state to set:', newProfile);
+                    debugLog('New profile state to set:', newProfile);
                     setProfile(newProfile);
                     
                     // Force a re-render by updating a dummy state
@@ -247,14 +248,14 @@ export default function ProfileForm() {
                     
                     // Test if the state was updated
                     setTimeout(() => {
-                      console.log('Profile state after update (delayed):', profile);
+                      debugLog('Profile state after update (delayed):', profile);
                     }, 100);
                     
-                    console.log('Profile state updated, now saving to database...');
+                    debugLog('Profile state updated, now saving to database...');
                     
                     // Save the image URL to the database
                     try {
-                      console.log('Saving image URL to database:', imageUrl);
+                      debugLog('Saving image URL to database:', imageUrl);
                       const response = await fetch('/api/profile', {
                         method: 'PUT',
                         headers: {
@@ -272,12 +273,12 @@ export default function ProfileForm() {
                       });
 
                       if (response.ok) {
-                        console.log('Profile updated successfully in database');
+                        debugLog('Profile updated successfully in database');
                         setMessage({ type: 'success', text: 'Profile photo updated successfully!' });
                         
                         // Wait a bit before refreshing to ensure state is updated
                         setTimeout(() => {
-                          console.log('Refreshing profile data...');
+                          debugLog('Refreshing profile data...');
                           fetchProfile();
                         }, 500);
                       } else {

@@ -32,7 +32,7 @@ interface Event {
 }
 
 // Mock data storage (in real app, this would be database)
-let mockUsers: User[] = [
+const mockUsers: User[] = [
   {
     id: '1',
     name: 'John Doe',
@@ -75,7 +75,7 @@ let mockUsers: User[] = [
   }
 ];
 
-let mockTeams: Team[] = [
+const mockTeams: Team[] = [
   {
     id: '1',
     name: 'React Developers',
@@ -102,7 +102,7 @@ let mockTeams: Team[] = [
   }
 ];
 
-let mockEvents: Event[] = [
+const mockEvents: Event[] = [
   {
     id: '1',
     title: 'Hackathon 2024',

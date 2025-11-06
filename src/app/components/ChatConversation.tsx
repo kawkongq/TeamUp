@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 
 interface ChatConversationProps {
@@ -18,17 +18,13 @@ export default function ChatConversation({ chat, currentUserId, onMessageSent, o
   const [error, setError] = useState('');
   const [hasMore, setHasMore] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [isTyping, setIsTyping] = useState(false);
-
-  useEffect(() => {
-    fetchMessages();
-  }, [chat.id]);
+  const [isTyping] = useState(false);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  const fetchMessages = async (before?: string) => {
+  const fetchMessages = useCallback(async (before?: string) => {
     try {
       setLoading(true);
       const params = new URLSearchParams({
@@ -63,7 +59,11 @@ export default function ChatConversation({ chat, currentUserId, onMessageSent, o
     } finally {
       setLoading(false);
     }
-  };
+  }, [chat.id, currentUserId]);
+
+  useEffect(() => {
+    void fetchMessages();
+  }, [fetchMessages]);
 
   const sendMessage = async () => {
     if (!newMessage.trim() || sending) return;

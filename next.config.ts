@@ -23,7 +23,7 @@ const nextConfig: NextConfig = {
   // Performance optimizations
   experimental: {
     optimizeCss: true,
-    optimizePackageImports: ['@prisma/client', '@headlessui/react', '@heroicons/react'],
+    optimizePackageImports: ['@headlessui/react', '@heroicons/react'],
   },
   // Turbopack configuration (moved from experimental.turbo)
   turbopack: {

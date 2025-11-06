@@ -109,7 +109,6 @@ export default function SwipeCard({ person, index, onSwipe, disabled = false }: 
     if (!dragStart) return;
 
     const threshold = 100;
-    const rotation = dragOffset.x * 0.1;
     
     if (dragOffset.x > threshold) {
       // Swipe right - Like

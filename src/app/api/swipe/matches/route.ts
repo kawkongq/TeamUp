@@ -1,8 +1,12 @@
+import { Types } from 'mongoose';
 import { NextRequest, NextResponse } from 'next/server';
+
 import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
 import Profile from '@/models/Profile';
 import Swipe from '@/models/Swipe';
+import User from '@/models/User';
+import { buildPersonSummary } from '@/lib/profile-utils';
+import { toSanitizedId } from '@/lib/team-response';
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,10 +21,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get users that the current user hasn't swiped on yet
-    const swipedUserIds = await Swipe.find({ swiperId: userId }).distinct('swipeeId');
+    if (!Types.ObjectId.isValid(userId)) {
+      return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 });
+    }
+
+    const swipedUserIds = await Swipe.find({ swiperId: userId }).distinct<string>('swipeeId');
     
-    // Get potential matches (users with profiles, excluding self and already swiped)
     const potentialMatches = await User.find({
       _id: { $nin: [userId, ...swipedUserIds] }, // Not the current user and not already swiped
       isActive: true
@@ -29,40 +35,24 @@ export async function GET(request: NextRequest) {
       .limit(20)
       .lean();
 
-    // Get profiles for these users
     const usersWithProfiles = await Promise.all(
       potentialMatches.map(async (user) => {
-        const profile = await Profile.findOne({ userId: user._id.toString() }).lean();
-        
-        if (!profile || !profile.isAvailable) {
-          return null; // Skip users without profiles or who are not available
+        const userIdValue = toSanitizedId(user._id ?? user.id);
+        if (!userIdValue) {
+          return null;
         }
 
-        return {
-          id: user._id.toString(),
-          name: profile.displayName || user.name || 'Anonymous',
-          role: profile.role || 'No role specified',
-          avatar: profile.avatar || null,
-          location: profile.location || 'Location not specified',
-          skills: profile.skills || [],
-          experience: profile.experience || 'Experience not specified',
-          interests: profile.interests || [],
-          status: profile.isAvailable ? 'available' : 'unavailable',
-          bio: profile.bio || 'No bio available',
-          github: profile.links?.github || null,
-          linkedin: profile.links?.linkedin || null,
-          rating: profile.rating || 0,
-          projectsCompleted: profile.projectsCompleted || 0,
-          hourlyRate: profile.hourlyRate || null,
-          timezone: profile.timezone || null,
-          createdAt: user.createdAt.toISOString(),
-          updatedAt: user.updatedAt.toISOString()
-        };
+        const profile = await Profile.findOne({ userId: userIdValue }).lean();
+        return buildPersonSummary(
+          { ...user, _id: userIdValue, id: userIdValue },
+          profile,
+        );
       })
     );
 
-    // Filter out null values (users without profiles or not available)
-    const people = usersWithProfiles.filter(user => user !== null);
+    const people = usersWithProfiles.filter(
+      (user): user is NonNullable<typeof user> => user !== null,
+    );
 
     return NextResponse.json({
       success: true,

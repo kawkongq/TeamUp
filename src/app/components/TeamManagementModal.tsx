@@ -3,20 +3,21 @@
 import { useState, useEffect } from 'react';
 import Button from './Button';
 import { useToast } from './Toast';
-import LoadingSpinner from './LoadingSpinner';
+
+interface TeamUser {
+  id: string;
+  name?: string;
+  email?: string;
+  profile?: {
+    displayName?: string;
+    avatar?: string;
+    role?: string;
+  };
+}
 
 interface TeamMember {
   id: string;
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    profile?: {
-      displayName: string;
-      avatar: string;
-      role: string;
-    };
-  };
+  user: TeamUser | null;
   role: string;
   joinedAt: string;
   isActive: boolean;
@@ -24,16 +25,7 @@ interface TeamMember {
 
 interface JoinRequest {
   id: string;
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    profile?: {
-      displayName: string;
-      avatar: string;
-      role: string;
-    };
-  };
+  user: TeamUser | null;
   message?: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   createdAt: string;
@@ -76,6 +68,19 @@ export default function TeamManagementModal({
     isActive: team.isActive
   });
   const { showToast } = useToast();
+
+  const getUserInitial = (user: TeamUser | null | undefined) => {
+    const name = user?.profile?.displayName || user?.name || user?.email || 'U';
+    return name.charAt(0).toUpperCase();
+  };
+
+  const getUserName = (user: TeamUser | null | undefined) => {
+    return user?.profile?.displayName || user?.name || user?.email || 'Unknown User';
+  };
+
+  const getUserRole = (user: TeamUser | null | undefined) => {
+    return user?.profile?.role || 'Member';
+  };
 
   const isOwner = team.ownerId === currentUserId;
   const pendingRequests = team.joinRequests?.filter(req => req.status === 'PENDING') || [];
@@ -317,18 +322,18 @@ export default function TeamManagementModal({
                 <div key={member.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div className="flex items-center space-x-3">
                     <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white font-semibold">
-                      {member.user.profile?.displayName?.charAt(0) || member.user.name?.charAt(0) || 'U'}
+                      {getUserInitial(member.user)}
                     </div>
                     <div>
-                      <p className="font-medium">{member.user.profile?.displayName || member.user.name}</p>
-                      <p className="text-sm text-gray-600">{member.user.profile?.role || 'Member'}</p>
+                      <p className="font-medium">{getUserName(member.user)}</p>
+                      <p className="text-sm text-gray-600">{getUserRole(member.user)}</p>
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
                     <span className="text-sm text-gray-500">
                       {member.role === 'owner' ? 'Owner' : 'Member'}
                     </span>
-                    {isOwner && member.user.id !== currentUserId && (
+                    {isOwner && member.user?.id !== currentUserId && (
                       <Button
                         variant="danger"
                         size="sm"
@@ -354,11 +359,11 @@ export default function TeamManagementModal({
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center space-x-3">
                         <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center text-white font-semibold">
-                          {request.user.profile?.displayName?.charAt(0) || request.user.name?.charAt(0) || 'U'}
+                          {getUserInitial(request.user)}
                         </div>
                         <div>
-                          <p className="font-medium">{request.user.profile?.displayName || request.user.name}</p>
-                          <p className="text-sm text-gray-600">{request.user.profile?.role || 'Developer'}</p>
+                          <p className="font-medium">{getUserName(request.user)}</p>
+                          <p className="text-sm text-gray-600">{getUserRole(request.user)}</p>
                         </div>
                       </div>
                       <span className="text-sm text-gray-500">

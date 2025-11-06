@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ProfileSkeleton, CardSkeleton } from '../components/SkeletonLoader';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useToast } from '../components/Toast';
 
@@ -54,7 +53,6 @@ export default function DashboardPage() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
   const [users, setUsers] = useState<Array<{ id: string; name: string; email: string; role: string; createdAt: string }>>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const { showToast } = useToast();
@@ -70,8 +68,6 @@ export default function DashboardPage() {
       if (response.ok) {
         const data = await response.json();
         if (data.authenticated && data.user) {
-          setCurrentUser(data.user);
-          
           // Check if user has admin role
           if (data.user.role !== 'admin') {
             setError('Access denied. Only admin users can access the dashboard.');

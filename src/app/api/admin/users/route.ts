@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
@@ -5,7 +6,7 @@ import Profile from '@/models/Profile';
 import Team from '@/models/Team';
 import TeamMember from '@/models/TeamMember';
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     await connectDB();
     

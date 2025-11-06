@@ -28,7 +28,6 @@ export default function SignupPage() {
         const data = await response.json();
         if (data.authenticated && data.user) {
           // User is already authenticated, redirect to dashboard
-          console.log('User already authenticated, redirecting...');
           router.push('/dashboard');
           return;
         }

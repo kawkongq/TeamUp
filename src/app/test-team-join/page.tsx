@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import CreateTeamForm from '../../components/CreateTeamForm';
-import JoinTeamButton from '../../components/JoinTeamButton';
-import TeamJoinRequests from '../../components/TeamJoinRequests';
+import CreateTeamForm from '../components/CreateTeamForm';
+import JoinTeamButton from '../components/JoinTeamButton';
+import TeamJoinRequests from '../components/TeamJoinRequests';
 
 export default function TestTeamJoinPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);

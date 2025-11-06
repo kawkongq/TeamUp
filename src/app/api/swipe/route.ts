@@ -1,15 +1,24 @@
+import { Types } from 'mongoose';
 import { NextRequest, NextResponse } from 'next/server';
+
 import connectDB from '@/lib/mongodb';
-import Swipe from '@/models/Swipe';
 import Match from '@/models/Match';
-import mongoose from 'mongoose';
+import Swipe from '@/models/Swipe';
+
+type SwipePayload = {
+  userId?: unknown;
+  targetUserId?: unknown;
+  action?: unknown;
+};
 
 export async function POST(request: NextRequest) {
   try {
     await connectDB();
     
-    const body = await request.json();
-    const { userId, targetUserId, action } = body;
+    const body = (await request.json()) as SwipePayload;
+    const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
+    const targetUserId = typeof body.targetUserId === 'string' ? body.targetUserId.trim() : '';
+    const action = typeof body.action === 'string' ? body.action.toLowerCase() : '';
 
     if (!userId || !targetUserId || !action) {
       return NextResponse.json(
@@ -25,25 +34,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate ObjectIds
-    if (!mongoose.Types.ObjectId.isValid(userId) || !mongoose.Types.ObjectId.isValid(targetUserId)) {
+    if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(targetUserId)) {
       return NextResponse.json({ error: 'Invalid user IDs' }, { status: 400 });
     }
 
-    // Map action to direction
     const direction = action === 'like' ? 'LIKE' : 'PASS';
 
-    // Check if there's already a swipe
     const existingSwipe = await Swipe.findOne({
       swiperId: userId,
       swipeeId: targetUserId
     });
 
     if (existingSwipe) {
-      // Update existing swipe
       await Swipe.findByIdAndUpdate(existingSwipe._id, { direction });
     } else {
-      // Create new swipe
       const swipe = new Swipe({
         swiperId: userId,
         swipeeId: targetUserId,
@@ -52,7 +56,6 @@ export async function POST(request: NextRequest) {
       await swipe.save();
     }
 
-    // If this is a like, check for mutual match
     if (action === 'like') {
       const mutualSwipe = await Swipe.findOne({
         swiperId: targetUserId,
@@ -61,7 +64,6 @@ export async function POST(request: NextRequest) {
       });
 
       if (mutualSwipe) {
-        // Check if match already exists
         const existingMatch = await Match.findOne({
           $or: [
             { userAId: userId, userBId: targetUserId },
@@ -70,7 +72,6 @@ export async function POST(request: NextRequest) {
         });
 
         if (!existingMatch) {
-          // Create a match
           const match = new Match({
             userAId: userId,
             userBId: targetUserId,

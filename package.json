@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --test --import tsx tests/**/*.test.ts",
     "db:seed": "npx tsx scripts/seed.ts",
     "db:seed-mongodb": "npx tsx scripts/seed-mongodb.ts"
   },

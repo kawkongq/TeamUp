@@ -1,10 +1,14 @@
 import mongoose from 'mongoose';
 
-const MONGODB_URI = process.env.MONGODB_URI || process.env.NEXT_PUBLIC_MONGODB_URI;
+import { debugLog } from './logger';
 
-if (!MONGODB_URI) {
+const databaseUri = process.env.MONGODB_URI || process.env.NEXT_PUBLIC_MONGODB_URI;
+
+if (!databaseUri) {
   throw new Error('Please define the MONGODB_URI environment variable inside .env or .env.local');
 }
+
+const MONGODB_URI = databaseUri;
 
 // Validate that URI includes database name
 if (!MONGODB_URI.includes('/teamup')) {
@@ -12,24 +16,26 @@ if (!MONGODB_URI.includes('/teamup')) {
   console.error('Current URI:', MONGODB_URI.replace(/:[^:@]*@/, ':***@'));
 }
 
-console.log('MongoDB URI loaded:', MONGODB_URI ? 'Yes' : 'No');
+debugLog('MongoDB URI loaded:', MONGODB_URI ? 'Yes' : 'No');
 
-let cached = global.mongoose;
+const globalWithMongoose = global as typeof global & {
+  mongoose?: { conn: typeof mongoose | null; promise: Promise<typeof mongoose> | null };
+};
 
-if (!cached) {
-  cached = global.mongoose = { conn: null, promise: null };
-}
+const cached =
+  globalWithMongoose.mongoose ??
+  (globalWithMongoose.mongoose = { conn: null, promise: null });
 
 async function connectDB() {
   // Check if already connected and connection is ready
   if (cached.conn && mongoose.connection.readyState === 1) {
-    console.log('Using existing MongoDB connection');
+    debugLog('Using existing MongoDB connection');
     return cached.conn;
   }
 
   // If connection is in a bad state, reset it
   if (mongoose.connection.readyState === 3 || mongoose.connection.readyState === 0) {
-    console.log('Resetting MongoDB connection...');
+    debugLog('Resetting MongoDB connection...');
     cached.conn = null;
     cached.promise = null;
   }
@@ -42,24 +48,27 @@ async function connectDB() {
       maxPoolSize: 10,
       minPoolSize: 2,
       retryWrites: true,
-      w: 'majority',
     };
 
-    console.log('Connecting to MongoDB...');
-    console.log('Database:', MONGODB_URI.split('/')[3]?.split('?')[0]);
+    debugLog('Connecting to MongoDB...');
+    debugLog('Database:', MONGODB_URI.split('/')[3]?.split('?')[0]);
     const startTime = Date.now();
-    
-    cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongooseInstance) => {
-      const duration = Date.now() - startTime;
-      console.log(`✅ MongoDB connected successfully in ${duration}ms`);
-      console.log(`✅ Connected to database: ${mongooseInstance.connection.db.databaseName}`);
-      return mongooseInstance;
-    }).catch((error) => {
-      console.error('❌ MongoDB connection failed:', error.message);
-      cached.promise = null;
-      cached.conn = null;
-      throw error;
-    });
+
+    cached.promise = mongoose
+      .connect(MONGODB_URI, opts)
+      .then((mongooseInstance) => {
+        const duration = Date.now() - startTime;
+        debugLog(`✅ MongoDB connected successfully in ${duration}ms`);
+        const dbName = mongooseInstance.connection.db?.databaseName ?? 'unknown';
+        debugLog(`✅ Connected to database: ${dbName}`);
+        return mongooseInstance;
+      })
+      .catch((error) => {
+        console.error('❌ MongoDB connection failed:', error.message);
+        cached.promise = null;
+        cached.conn = null;
+        throw error;
+      });
   }
 
   try {

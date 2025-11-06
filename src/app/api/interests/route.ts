@@ -1,7 +1,20 @@
-// @ts-nocheck
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+
 import connectDB from '@/lib/mongodb';
 import Interest from '@/models/Interest';
+import { toSanitizedId } from '@/lib/team-response';
+
+type InterestRecord = {
+  _id?: unknown;
+  id?: unknown;
+  name?: unknown;
+  category?: unknown;
+};
+
+type CreateInterestPayload = {
+  name?: unknown;
+  category?: unknown;
+};
 
 export async function GET() {
   try {
@@ -9,12 +22,16 @@ export async function GET() {
     
     const interests = await Interest.find({})
       .sort({ name: 1 })
-      .lean();
+      .lean<InterestRecord[]>();
 
-    const interestsWithId = interests.map(interest => ({
-      ...interest,
-      id: interest._id.toString()
-    }));
+    const interestsWithId = interests.map((interest) => {
+      const id = toSanitizedId(interest._id ?? interest.id);
+      return {
+        id,
+        name: typeof interest.name === 'string' ? interest.name : '',
+        category: typeof interest.category === 'string' ? interest.category : 'Other',
+      };
+    });
 
     return NextResponse.json({
       success: true,
@@ -29,12 +46,16 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     await connectDB();
     
-    const body = await request.json();
-    const { name, category } = body;
+    const body = (await request.json()) as CreateInterestPayload;
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    const category =
+      typeof body.category === 'string' && body.category.trim().length > 0
+        ? body.category.trim()
+        : 'Other';
 
     if (!name) {
       return NextResponse.json(
@@ -45,14 +66,15 @@ export async function POST(request: Request) {
 
     const interest = await Interest.create({
       name,
-      category: category || 'Other'
+      category
     });
 
     return NextResponse.json({
       success: true,
       interest: {
-        ...interest.toObject(),
-        id: interest._id.toString()
+        id: toSanitizedId(interest._id) || interest._id.toString(),
+        name: interest.name,
+        category: interest.category
       }
     });
   } catch (error) {

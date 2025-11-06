@@ -1,34 +1,53 @@
 import { NextResponse } from 'next/server';
+
 import connectDB from '@/lib/mongodb';
 import Profile from '@/models/Profile';
+import { toSanitizedId } from '@/lib/team-response';
+
+type SanitizedProfile = {
+  id: string;
+  displayName?: string;
+  bio?: string;
+  role?: string;
+  timezone?: string;
+  userId?: string;
+};
+
+function mapProfile(profileDoc: unknown): SanitizedProfile | null {
+  if (!profileDoc || typeof profileDoc !== 'object') {
+    return null;
+  }
+
+  const record = profileDoc as Record<string, unknown>;
+  const id = toSanitizedId(record._id ?? record.id);
+  if (!id) {
+    return null;
+  }
+
+  return {
+    id,
+    displayName: typeof record.displayName === 'string' ? record.displayName : undefined,
+    bio: typeof record.bio === 'string' ? record.bio : undefined,
+    role: typeof record.role === 'string' ? record.role : undefined,
+    timezone: typeof record.timezone === 'string' ? record.timezone : undefined,
+    userId: typeof record.userId === 'string' ? record.userId : undefined,
+  };
+}
 
 export async function GET() {
   try {
     await connectDB();
     
-    // Try to fetch real data from database
     try {
       const profiles = await Profile.find()
         .sort({ _id: 1 })
         .lean();
 
-      console.log(`Fetched ${profiles.length} profiles from database`);
-      
-      const transformedProfiles = profiles.map(profile => ({
-        id: profile._id.toString(),
-        displayName: profile.displayName,
-        bio: profile.bio,
-        role: profile.role,
-        timezone: profile.timezone,
-        userId: profile.userId,
-      }));
-      
-      console.log('Transformed profiles data:', JSON.stringify(transformedProfiles, null, 2));
+      const transformedProfiles = profiles
+        .map((profile) => mapProfile(profile))
+        .filter((profile): profile is SanitizedProfile => profile !== null);
 
-      return NextResponse.json({
-        profiles: transformedProfiles,
-      });
-      
+      return NextResponse.json({ profiles: transformedProfiles });
     } catch (dbError) {
       console.error("Database error, using mock data:", dbError);
       

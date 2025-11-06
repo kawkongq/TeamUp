@@ -29,7 +29,6 @@ export default function SigninPage() {
         const data = await response.json();
         if (data.authenticated && data.user) {
           // User is already authenticated, redirect to home
-          console.log('User already authenticated, redirecting...');
           router.push('/');
           return;
         }
@@ -80,7 +79,6 @@ export default function SigninPage() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('Signin successful:', data);
         
         // Store user info in localStorage for fallback
         localStorage.setItem('userEmail', data.user.email);
