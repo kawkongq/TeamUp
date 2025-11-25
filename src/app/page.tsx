@@ -64,25 +64,6 @@ export default function Home() {
     checkAuth();
   }, []);
 
-  const handleSignOut = async () => {
-    try {
-      await fetch('/api/auth/signout', {
-        method: 'POST',
-        credentials: 'include'
-      });
-
-      // Clear local storage
-      localStorage.removeItem('userEmail');
-      setIsAuthenticated(false);
-      setUserEmail(null);
-
-      // Refresh page
-      window.location.reload();
-    } catch (error) {
-      console.error('Sign out error:', error);
-    }
-  };
-
   if (loading) {
     return (
       <div className="min-h-[80vh] flex items-center justify-center">
@@ -189,31 +170,22 @@ export default function Home() {
                 <>
                   <Link
                     href="/teams"
-                    className="btn-primary text-lg px-8 py-4 hover:scale-105 relative overflow-hidden"
+                    className="inline-flex items-center gap-3 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 px-8 py-4 text-lg font-semibold text-white shadow-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"
                   >
-                    <span className="relative z-10">Browse Teams</span>
-                    <svg className="ml-2 w-5 h-5 relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <span>Browse Teams</span>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                     </svg>
                   </Link>
                   <Link
                     href="/profile"
-                    className="btn-secondary text-lg px-8 py-4 hover:scale-105"
+                    className="inline-flex items-center gap-3 rounded-2xl border-2 border-indigo-100 bg-white/70 px-8 py-4 text-lg font-semibold text-indigo-700 shadow-md backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-indigo-200 hover:shadow-xl"
                   >
-                    Edit Profile
+                    <span>Edit Profile</span>
+                    <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5h2m-6 6h6m-6 4h6m4-14h-4a2 2 0 00-2 2v12a2 2 0 002 2h4a2 2 0 002-2V3a2 2 0 00-2-2z" />
+                    </svg>
                   </Link>
-                  <Link
-                    href="/admin-setup"
-                    className="btn-secondary text-lg px-8 py-4 hover:scale-105 bg-gradient-to-r from-orange-500 to-red-600 text-white border-0 hover:from-orange-600 hover:to-red-700"
-                  >
-                    Admin Demo
-                  </Link>
-                  <button
-                    onClick={handleSignOut}
-                    className="btn-danger text-lg px-8 py-4 hover:scale-105"
-                  >
-                    Sign Out
-                  </button>
                 </>
               )}
             </div>

@@ -273,12 +273,12 @@ export default function Navbar() {
                     <span className="text-sm font-medium">{userEmail}</span>
                   </Link>
                   
-                  <button
-                    onClick={handleSignOut}
-                    className="text-gray-700 hover:text-red-600 transition-colors"
+                  <Link
+                    href="/subscription"
+                    className="inline-flex items-center rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5"
                   >
-                    Sign Out
-                  </button>
+                    Upgrade
+                  </Link>
                 </div>
               </>
             ) : (
@@ -335,12 +335,12 @@ export default function Navbar() {
                   <Link href="/profile" className="block px-3 py-2 text-gray-700 hover:text-indigo-600 transition-colors">
                     Profile
                   </Link>
-                  <button
-                    onClick={handleSignOut}
-                    className="block w-full text-left px-3 py-2 text-gray-700 hover:text-red-600 transition-colors"
+                  <Link
+                    href="/subscription"
+                    className="block px-3 py-2 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold text-center shadow-md hover:shadow-lg transition-all duration-200"
                   >
-                    Sign Out
-                  </button>
+                    Upgrade
+                  </Link>
                 </>
               ) : (
                 <>

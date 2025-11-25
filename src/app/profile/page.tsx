@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ImageUpload from '../components/ImageUpload';
 import { useNotification } from '../contexts/NotificationContext';
@@ -64,6 +65,7 @@ export default function ProfilePage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [skillSearch, setSkillSearch] = useState('');
   const [interestSearch, setInterestSearch] = useState('');
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     fetchProfile();
@@ -265,6 +267,31 @@ export default function ProfilePage() {
     }
   };
 
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    try {
+      const response = await fetch('/api/auth/signout', {
+        method: 'POST',
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to sign out');
+      }
+
+      localStorage.removeItem('userEmail');
+      localStorage.removeItem('userRole');
+      localStorage.removeItem('userId');
+      router.refresh();
+      window.location.href = '/';
+    } catch (error) {
+      console.error('Sign out error:', error);
+      showError('Sign out failed', 'Please try again.');
+    } finally {
+      setSigningOut(false);
+    }
+  };
+
   const handlePhotoUpload = async (imageUrl: string) => {
     try {
       // Update local profile state with new avatar URL
@@ -353,6 +380,36 @@ export default function ProfilePage() {
           <p className="text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
             Customize your profile to showcase your skills, experience, and personality to potential collaborators
           </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6 mb-10">
+          <Link
+            href="/subscription"
+            className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-3 text-white text-lg font-semibold shadow-lg transition-all duration-200 hover:shadow-xl hover:-translate-y-0.5"
+          >
+            <span className="text-base">Upgrade to Premium</span>
+            <span className="rounded-full bg-white/20 px-3 py-1 text-sm font-bold">49฿</span>
+          </Link>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            disabled={signingOut}
+            className="inline-flex items-center gap-2 rounded-2xl border-2 border-red-200 px-6 py-3 text-red-600 font-semibold bg-white shadow-sm transition-all duration-200 hover:border-red-300 hover:shadow-md disabled:opacity-60"
+          >
+            {signingOut ? (
+              <span className="flex items-center gap-2">
+                <span className="h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></span>
+                Signing out...
+              </span>
+            ) : (
+              <>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Sign Out
+              </>
+            )}
+          </button>
         </div>
 
 
